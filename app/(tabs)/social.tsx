@@ -1,6 +1,6 @@
-
+// app/(tabs)/social.tsx
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, Image, FlatList, TouchableOpacity, Linking, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, Image, ScrollView, TouchableOpacity, Linking } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { INSTAGRAM_POSTS } from '@/constants/churchData';
 
@@ -8,16 +8,23 @@ export default function SocialScreen() {
   const [postsAtuais, setPostsAtuais] = useState<typeof INSTAGRAM_POSTS>([]);
 
   useEffect(() => {
-    
     const atualizarPosts = () => {
+      
+      if (INSTAGRAM_POSTS.length <= 3) {
+        setPostsAtuais(INSTAGRAM_POSTS);
+        return;
+      }
+
       const horaAtual = new Date().getHours();
-      
-      
       const indiceGrupo = horaAtual % 3; 
       const inicio = indiceGrupo * 3;
-      const fim = inicio + 3;
+      // Garante que não vai quebrar se o array acabar
+      const fim = Math.min(inicio + 3, INSTAGRAM_POSTS.length);
       
-      setPostsAtuais(INSTAGRAM_POSTS.slice(inicio, fim));
+      const postsSelecionados = INSTAGRAM_POSTS.slice(inicio, fim);
+      
+    
+      setPostsAtuais(postsSelecionados.length > 0 ? postsSelecionados : INSTAGRAM_POSTS.slice(0, 3));
     };
 
     atualizarPosts();
@@ -41,12 +48,14 @@ export default function SocialScreen() {
         </View>
 
         <Text style={styles.infoText}>
-          Destaques da última hora. Atualiza automaticamente.
+          Destaques da Igreja
         </Text>
 
         {postsAtuais.map((item) => (
           <View key={item.id} style={styles.postCard}>
-            <Image source={{ uri: item.img }} style={styles.postImage} />
+      
+            <Image source={item.img} style={styles.postImage} />
+            
             <View style={styles.captionContainer}>
               <Text style={styles.caption}>{item.caption}</Text>
               <View style={styles.actions}>
