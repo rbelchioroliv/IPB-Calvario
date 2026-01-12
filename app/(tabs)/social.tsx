@@ -1,4 +1,4 @@
-// app/(tabs)/social.tsx
+
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, Image, FlatList, TouchableOpacity, Linking, ScrollView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -8,14 +8,11 @@ export default function SocialScreen() {
   const [postsAtuais, setPostsAtuais] = useState<typeof INSTAGRAM_POSTS>([]);
 
   useEffect(() => {
-    // Lógica para rotacionar a cada hora
+    
     const atualizarPosts = () => {
       const horaAtual = new Date().getHours();
       
-      // Temos 9 posts. Vamos dividir em grupos de 3.
-      // Hora 0, 3, 6, 9... mostra o grupo 1
-      // Hora 1, 4, 7, 10... mostra o grupo 2
-      // Hora 2, 5, 8, 11... mostra o grupo 3
+      
       const indiceGrupo = horaAtual % 3; 
       const inicio = indiceGrupo * 3;
       const fim = inicio + 3;

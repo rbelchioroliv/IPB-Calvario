@@ -5,7 +5,7 @@ import { Calendar, LocaleConfig } from 'react-native-calendars';
 import { Ionicons } from '@expo/vector-icons';
 import { EVENTOS_CALENDARIO } from '@/constants/churchData';
 
-// Configuração para deixar o calendário em Português
+
 LocaleConfig.locales['pt-br'] = {
   monthNames: ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'],
   monthNamesShort: ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'],
@@ -16,20 +16,20 @@ LocaleConfig.locales['pt-br'] = {
 LocaleConfig.defaultLocale = 'pt-br';
 
 export default function CalendarScreen() {
-  const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().split('T')[0].substring(0, 7)); // Pega o mês atual (ex: 2025-02)
+  const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().split('T')[0].substring(0, 7)); 
 
-  // Prepara as marcações no calendário (bolinhas roxas)
+  
   const markedDates = EVENTOS_CALENDARIO.reduce((acc, evento) => {
     acc[evento.data] = { marked: true, dotColor: '#4a148c' };
     return acc;
   }, {} as any);
 
-  // Filtra os eventos para mostrar apenas os do mês visível no calendário
+ 
   const eventosDoMes = EVENTOS_CALENDARIO.filter(evento => 
     evento.data.startsWith(selectedMonth)
-  ).sort((a, b) => a.data.localeCompare(b.data)); // Ordena por data
+  ).sort((a, b) => a.data.localeCompare(b.data)); 
 
-  // Formata a data para exibir bonito na lista (ex: 15/02 - Sábado)
+
   const formatarDataLista = (dataString: string) => {
     const [ano, mes, dia] = dataString.split('-');
     const date = new Date(parseInt(ano), parseInt(mes) - 1, parseInt(dia));
@@ -67,7 +67,7 @@ export default function CalendarScreen() {
             textDayHeaderFontSize: 14
           }}
           markedDates={markedDates}
-          // Quando o usuário troca o mês, atualizamos a lista de baixo
+        
           onMonthChange={(month) => {
             setSelectedMonth(month.dateString.substring(0, 7));
           }}

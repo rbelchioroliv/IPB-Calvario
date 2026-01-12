@@ -1,5 +1,4 @@
 // constants/churchData.ts
-
 export const AVISOS = [
   { id: 1, titulo: 'Culto de Santa Ceia', data: 'Domingo, 19:00', descricao: 'Não perca nosso culto solene de comunhão.' },
   { id: 2, titulo: 'Reunião de Jovens', data: 'Sábado, 19:30', descricao: 'Estudo sobre Romanos e comunhão.' },
@@ -30,5 +29,17 @@ export const EVENTOS_CALENDARIO = [
   { id: '4', data: '2026-03-08', titulo: 'Chá das Mulheres', hora: '16:00', tipo: 'Mulheres' },
   { id: '5', data: '2026-03-15', titulo: 'Assembleia Ordinária', hora: '09:00', tipo: 'Reunião' },
   
+];
+
+export const ANIVERSARIANTES = [
+  { id: 1, nome: 'Maria Silva', dia: 5, mes: 1 }, 
+  { id: 2, nome: 'Lucas Pereira', dia: 12, mes: 1 }, 
+  { id: 3, nome: 'Ana Souza', dia: 28, mes: 1 }, 
+  
+  { id: 4, nome: 'Pedro Santos', dia: 2, mes: 2 }, 
+  { id: 5, nome: 'Juliana Costa', dia: 15, mes: 2 }, 
+  
+  { id: 6, nome: 'Rev. Roberto', dia: 10, mes: 3 }, 
+ 
 ];
 

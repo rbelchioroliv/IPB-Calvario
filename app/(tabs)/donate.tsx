@@ -39,10 +39,10 @@ export default function DonationScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#4a148c' }, // Roxo Escuro (Igual ao topo da Home)
+  container: { flex: 1, backgroundColor: '#4a148c' }, 
   header: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingTop: 40 },
   title: { fontSize: 28, fontWeight: 'bold', color: '#fff' },
-  subtitle: { color: '#e1bee7', marginTop: 5 }, // Lilás claro
+  subtitle: { color: '#e1bee7', marginTop: 5 },
   qrContainer: { flex: 2.5, backgroundColor: '#fff', borderTopLeftRadius: 30, borderTopRightRadius: 30, padding: 30, alignItems: 'center' },
   qrCode: { width: 200, height: 200, marginBottom: 20 },
   instruction: { textAlign: 'center', color: '#666', marginBottom: 20 },

@@ -51,9 +51,9 @@ export default function BibleScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f3e5f5' }, // Lilás claro
+  container: { flex: 1, backgroundColor: '#f3e5f5' }, 
   header: { padding: 20, backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#e1bee7', marginTop: 30 },
-  headerTitle: { fontSize: 20, fontWeight: 'bold', color: '#4a148c', textAlign: 'center' }, // Roxo escuro
+  headerTitle: { fontSize: 20, fontWeight: 'bold', color: '#4a148c', textAlign: 'center' }, 
   tabs: { flexDirection: 'row', backgroundColor: '#fff', elevation: 2 },
   tabItem: { flex: 1, padding: 15, alignItems: 'center', borderBottomWidth: 3, borderBottomColor: 'transparent' },
   activeTab: { borderBottomColor: '#7b1fa2' }, // Roxo médio
