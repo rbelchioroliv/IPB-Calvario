@@ -1,43 +1,34 @@
 // app/(tabs)/index.tsx
 import React from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Linking, Image } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Image } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { AVISOS, VERSICULO_DO_DIA } from '@/constants/churchData';
 
 export default function HomeScreen() {
-  const openInstagram = () => {
-    Linking.openURL('https://www.instagram.com/instagramdaigreja');
-  };
-
   return (
     <ScrollView style={styles.container}>
-      {/* Cabeçalho Roxo com Logotipo */}
+      {/* Cabeçalho Roxo com Logotipo e Nome */}
       <View style={styles.header}>
         <Image
-          source={require('@/assets/images/logo-igreja.png')} // Caminho para o seu logo
+          source={require('@/assets/images/logo-igreja.png')} 
           style={styles.logo}
           resizeMode="contain"
         />
+        <Text style={styles.churchName}>IPB Calvário</Text>
         <Text style={styles.subTitle}>Seja bem-vindo!</Text>
       </View>
 
       {/* Versículo do Dia */}
       <View style={styles.card}>
         <View style={styles.cardHeader}>
-          <Ionicons name="book" size={20} color="#6a1b9a" /> {/* Roxo escuro */}
+          <Ionicons name="book" size={20} color="#6a1b9a" />
           <Text style={styles.cardTitle}>Versículo do Dia</Text>
         </View>
         <Text style={styles.verseText}>"{VERSICULO_DO_DIA.texto}"</Text>
         <Text style={styles.verseRef}>- {VERSICULO_DO_DIA.ref}</Text>
       </View>
 
-      {/* Botão Instagram (Cor Roxa Vibrante) */}
-      <TouchableOpacity style={styles.instaButton} onPress={openInstagram}>
-        <Ionicons name="logo-instagram" size={24} color="#fff" />
-        <Text style={styles.instaButtonText}>Ver Instagram da Igreja</Text>
-      </TouchableOpacity>
-
-      {/* Quadro de Avisos */}
+      {/* Quadro de Avisos (Agora sobe um pouco mais já que não tem o botão) */}
       <Text style={styles.sectionTitle}>Quadro de Avisos</Text>
       {AVISOS.map((aviso) => (
         <View key={aviso.id} style={styles.avisoCard}>
@@ -52,24 +43,31 @@ export default function HomeScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f3e5f5' }, // Fundo lilás bem claro
+  container: { flex: 1, backgroundColor: '#f3e5f5' },
   header: {
-    backgroundColor: '#4a148c', // Roxo escuro do fundo do logo
+    backgroundColor: '#4a148c', // Roxo escuro
     padding: 20,
     paddingTop: 50,
     paddingBottom: 30,
-    alignItems: 'center', // Centraliza o logo e o texto
-    borderBottomLeftRadius: 30, // Borda arredondada
-    borderBottomRightRadius: 30, // Borda arredondada
+    alignItems: 'center',
+    borderBottomLeftRadius: 30,
+    borderBottomRightRadius: 30,
   },
   logo: {
-    width: 120, // Largura do logo
-    height: 120, // Altura do logo
-    marginBottom: 10,
+    width: 100,
+    height: 100,
+    marginBottom: 5,
+  },
+  churchName: {
+    fontSize: 26,
+    fontWeight: 'bold',
+    color: '#fff',
+    marginBottom: 2,
+    marginTop: 5,
   },
   subTitle: {
-    fontSize: 18,
-    color: '#e1bee7', // Lilás claro
+    fontSize: 16,
+    color: '#e1bee7',
     fontWeight: '600',
   },
   card: {
@@ -87,19 +85,7 @@ const styles = StyleSheet.create({
   cardTitle: { marginLeft: 10, fontWeight: 'bold', color: '#4a148c', fontSize: 16 },
   verseText: { fontStyle: 'italic', fontSize: 16, color: '#4a148c', lineHeight: 24 },
   verseRef: { textAlign: 'right', marginTop: 10, fontWeight: 'bold', color: '#8e24aa' },
-  instaButton: {
-    backgroundColor: '#8e24aa', // Roxo médio vibrante
-    flexDirection: 'row',
-    marginHorizontal: 15,
-    marginBottom: 20,
-    padding: 15,
-    borderRadius: 15,
-    alignItems: 'center',
-    justifyContent: 'center',
-    elevation: 2,
-  },
-  instaButtonText: { color: '#fff', fontWeight: 'bold', marginLeft: 10, fontSize: 16 },
-  sectionTitle: { marginLeft: 15, fontSize: 20, fontWeight: 'bold', color: '#4a148c', marginBottom: 15 },
+  sectionTitle: { marginLeft: 15, fontSize: 20, fontWeight: 'bold', color: '#4a148c', marginBottom: 15, marginTop: 10 },
   avisoCard: {
     backgroundColor: '#fff',
     marginHorizontal: 15,
@@ -107,7 +93,7 @@ const styles = StyleSheet.create({
     padding: 15,
     borderRadius: 12,
     borderLeftWidth: 5,
-    borderLeftColor: '#8e24aa', // Roxo médio
+    borderLeftColor: '#8e24aa',
     elevation: 2,
   },
   avisoDate: { fontSize: 12, color: '#7b1fa2', fontWeight: 'bold' },

@@ -21,6 +21,15 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
+        name="calendar"
+        options={{
+          title: 'Agenda',
+          tabBarIcon: ({ color, focused }) => (
+            <Ionicons name={focused ? 'calendar' : 'calendar-outline'} size={24} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
         name="bible"
         options={{
           title: 'Bíblia',
@@ -38,6 +47,20 @@ export default function TabLayout() {
           ),
         }}
       />
+
+      <Tabs.Screen
+        name="social"
+        options={{
+          title: 'Social',
+          tabBarIcon: ({ color, focused }) => (
+            <Ionicons name={focused ? 'logo-instagram' : 'logo-instagram'} size={24} color={color} />
+          ),
+        }}
+      />
+
+
     </Tabs>
+
+
   );
 }
