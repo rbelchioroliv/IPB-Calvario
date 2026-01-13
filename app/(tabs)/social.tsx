@@ -18,7 +18,7 @@ export default function SocialScreen() {
       const horaAtual = new Date().getHours();
       const indiceGrupo = horaAtual % 3; 
       const inicio = indiceGrupo * 3;
-      // Garante que não vai quebrar se o array acabar
+      
       const fim = Math.min(inicio + 3, INSTAGRAM_POSTS.length);
       
       const postsSelecionados = INSTAGRAM_POSTS.slice(inicio, fim);

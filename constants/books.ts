@@ -1,4 +1,3 @@
-// constants/books.ts
 
 export const LIVROS_BIBLIA = [
   "Gênesis", "Êxodo", "Levítico", "Números", "Deuteronômio",

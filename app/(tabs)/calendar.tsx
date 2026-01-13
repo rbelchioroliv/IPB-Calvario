@@ -1,10 +1,9 @@
-// app/(tabs)/calendar.tsx
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, FlatList, SafeAreaView } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, StyleSheet, FlatList, SafeAreaView, ActivityIndicator } from 'react-native';
 import { Calendar, LocaleConfig } from 'react-native-calendars';
 import { Ionicons } from '@expo/vector-icons';
-import { EVENTOS_CALENDARIO } from '@/constants/churchData';
-
+import { db } from '@/services/firebaseConfig';
+import { collection, getDocs } from 'firebase/firestore';
 
 LocaleConfig.locales['pt-br'] = {
   monthNames: ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'],
@@ -17,25 +16,41 @@ LocaleConfig.defaultLocale = 'pt-br';
 
 export default function CalendarScreen() {
   const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().split('T')[0].substring(0, 7)); 
+  const [eventos, setEventos] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  
-  const markedDates = EVENTOS_CALENDARIO.reduce((acc, evento) => {
+  // Busca Eventos do Firebase
+  useEffect(() => {
+    const fetchEvents = async () => {
+      try {
+        const querySnapshot = await getDocs(collection(db, "eventos"));
+        const listaEventos = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        setEventos(listaEventos);
+      } catch (e) {
+        console.log("Erro ao buscar eventos", e);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchEvents();
+  }, []);
+
+  const markedDates = eventos.reduce((acc, evento) => {
     acc[evento.data] = { marked: true, dotColor: '#4a148c' };
     return acc;
   }, {} as any);
 
- 
-  const eventosDoMes = EVENTOS_CALENDARIO.filter(evento => 
+  const eventosDoMes = eventos.filter(evento => 
     evento.data.startsWith(selectedMonth)
-  ).sort((a, b) => a.data.localeCompare(b.data)); 
+  ).sort((a, b) => a.data.localeCompare(b.data));
 
-
-  const formatarDataLista = (dataString: string) => {
-    const [ano, mes, dia] = dataString.split('-');
-    const date = new Date(parseInt(ano), parseInt(mes) - 1, parseInt(dia));
-    const diaSemana = LocaleConfig.locales['pt-br'].dayNamesShort[date.getDay()];
-    return `${dia}/${mes} - ${diaSemana}`;
-  };
+  if (loading) {
+    return (
+      <View style={{flex: 1, justifyContent: 'center', alignItems: 'center'}}>
+        <ActivityIndicator size="large" color="#4a148c" />
+      </View>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.container}>
@@ -53,21 +68,11 @@ export default function CalendarScreen() {
             selectedDayTextColor: '#ffffff',
             todayTextColor: '#4a148c',
             dayTextColor: '#2d4150',
-            textDisabledColor: '#d9e1e8',
             dotColor: '#4a148c',
-            selectedDotColor: '#ffffff',
             arrowColor: '#4a148c',
             monthTextColor: '#4a148c',
-            indicatorColor: '#4a148c',
-            textDayFontWeight: '300',
-            textMonthFontWeight: 'bold',
-            textDayHeaderFontWeight: '300',
-            textDayFontSize: 16,
-            textMonthFontSize: 18,
-            textDayHeaderFontSize: 14
           }}
           markedDates={markedDates}
-        
           onMonthChange={(month) => {
             setSelectedMonth(month.dateString.substring(0, 7));
           }}
