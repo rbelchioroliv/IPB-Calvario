@@ -1,10 +1,5 @@
 // constants/churchData.ts
 
-export const VERSICULO_DO_DIA = {
-  texto: "Porque Deus amou o mundo de tal maneira que deu o seu Filho unigênito, para que todo aquele que nele crê não pereça, mas tenha a vida eterna.",
-  ref: "João 3:16"
-};
-
 export const INSTAGRAM_POSTS = [
   { id: 1, img: require('@/assets/images/img1.png'), caption: 'Calvário 30 anos! 🙏 #IPBCalvario #Culto' },
   { id: 2, img: require('@/assets/images/img2.png'), caption: 'Santa Ceia! 🔥' },

@@ -1,95 +1,184 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, Image, ActivityIndicator, RefreshControl } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Image, ActivityIndicator, RefreshControl, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { VERSICULO_DO_DIA } from '@/constants/churchData'; 
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { db } from '@/services/firebaseConfig';
 import { collection, getDocs } from 'firebase/firestore';
+import { API_TOKEN } from '@/constants/churchData';
+import { useRouter } from 'expo-router';
 
 export default function HomeScreen() {
+  const router = useRouter();
+
   const [avisos, setAvisos] = useState<any[]>([]);
   const [aniversariantes, setAniversariantes] = useState<any[]>([]);
+  const [versiculoDoDia, setVersiculoDoDia] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
-  const dataHoje = new Date();
+  const dataHojeObj = new Date();
   const nomesMeses = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
-  const nomeMesAtual = nomesMeses[dataHoje.getMonth()];
+  const nomeMesAtual = nomesMeses[dataHojeObj.getMonth()];
+  const dataFormatadaHoje = dataHojeObj.toISOString().split('T')[0];
+
+
+  const carregarVersiculoDoDia = async () => {
+    try {
+      const dataSalva = await AsyncStorage.getItem('@versiculo_data');
+      const versiculoSalvoStr = await AsyncStorage.getItem('@versiculo_atual');
+      const historicoStr = await AsyncStorage.getItem('@versiculo_historico');
+
+      let historico = historicoStr ? JSON.parse(historicoStr) : [];
+      let usarSalvo = false;
+
+
+      if (dataSalva === dataFormatadaHoje && versiculoSalvoStr) {
+        const v = JSON.parse(versiculoSalvoStr);
+        if (v.livro && v.capitulo) {
+          setVersiculoDoDia(v);
+          usarSalvo = true;
+        }
+      }
+
+      if (usarSalvo) return;
+
+      console.log("Buscando novo versículo completo...");
+
+      let novoVersiculo = null;
+      let tentativas = 0;
+
+      while (!novoVersiculo && tentativas < 5) {
+
+        const response = await fetch('https://www.abibliadigital.com.br/api/verses/nvi/random', {
+          method: 'GET',
+          headers: { 'Authorization': `Bearer ${API_TOKEN}`, 'Accept': 'application/json' }
+        });
+
+        const data = await response.json();
+
+
+        if (data.error) throw new Error("Erro API");
+
+        const idVersiculo = `${data.book.abbrev.pt}-${data.chapter}-${data.number}`;
+
+        if (!historico.includes(idVersiculo)) {
+          novoVersiculo = data;
+          historico.push(idVersiculo);
+          if (historico.length > 500) historico.shift();
+        }
+        tentativas++;
+      }
+
+      if (!novoVersiculo) return;
+
+      const versiculoFormatado = {
+        texto: novoVersiculo.text,
+        ref: `${novoVersiculo.book.name} ${novoVersiculo.chapter}:${novoVersiculo.number}`,
+        livro: novoVersiculo.book.name,
+        capitulo: novoVersiculo.chapter
+      };
+
+      setVersiculoDoDia(versiculoFormatado);
+      await AsyncStorage.setItem('@versiculo_data', dataFormatadaHoje);
+      await AsyncStorage.setItem('@versiculo_atual', JSON.stringify(versiculoFormatado));
+      await AsyncStorage.setItem('@versiculo_historico', JSON.stringify(historico));
+
+    } catch (error) {
+      console.log("Erro versículo:", error);
+
+      setVersiculoDoDia({
+        texto: "Por isso não tema, pois estou com você; não tenha medo, pois sou o seu Deus.",
+        ref: "Isaías 41:10",
+        livro: "Isaías",
+        capitulo: 41
+      });
+    }
+  };
 
   const carregarDados = async () => {
     try {
-      // Buscar Avisos
+      await carregarVersiculoDoDia();
+
       const avisosRef = collection(db, "avisos");
       const avisosSnapshot = await getDocs(avisosRef);
-      const listaAvisos = avisosSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      setAvisos(listaAvisos);
+      setAvisos(avisosSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
 
-      // Buscar Aniversariantes
       const niverRef = collection(db, "aniversariantes");
       const niverSnapshot = await getDocs(niverRef);
       const listaNiver = niverSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as any));
-      
-      // Filtrar apenas do mês atual
-      const mesAtualNum = dataHoje.getMonth() + 1;
-      const filtrados = listaNiver
-        .filter(p => p.mes === mesAtualNum)
-        .sort((a, b) => a.dia - b.dia);
-      
-      setAniversariantes(filtrados);
+      const mesAtualNum = dataHojeObj.getMonth() + 1;
+      setAniversariantes(listaNiver.filter(p => p.mes === mesAtualNum).sort((a, b) => a.dia - b.dia));
 
     } catch (error) {
-      console.log("Erro ao buscar dados:", error);
+      console.log("Erro geral:", error);
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
   };
 
-  useEffect(() => {
-    carregarDados();
-  }, []);
+  useEffect(() => { carregarDados(); }, []);
+  const onRefresh = useCallback(() => { setRefreshing(true); carregarDados(); }, []);
 
-  const onRefresh = useCallback(() => {
-    setRefreshing(true);
-    carregarDados();
-  }, []);
+  const lerCapituloCompleto = () => {
+    if (versiculoDoDia && versiculoDoDia.livro && versiculoDoDia.capitulo) {
+
+      router.push('/bible');
+
+      router.replace({
+        pathname: "/bible",
+        params: {
+          livroAutomatico: versiculoDoDia.livro,
+          capituloAutomatico: versiculoDoDia.capitulo
+        }
+      });
+    } else {
+      alert("Erro: Informações do capítulo não disponíveis. Atualize a tela.");
+      onRefresh();
+    }
+  };
 
   if (loading) {
     return (
-      <View style={{flex: 1, justifyContent: 'center', alignItems: 'center'}}>
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
         <ActivityIndicator size="large" color="#4a148c" />
-        <Text style={{marginTop: 10}}>Carregando informações...</Text>
       </View>
     );
   }
 
   return (
-    <ScrollView 
-      style={styles.container}
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
-    >
-      {/* Cabeçalho */}
+    <ScrollView style={styles.container} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}>
       <View style={styles.header}>
-        <Image source={require('@/assets/images/logo-igreja.png')} style={styles.logo} resizeMode="contain"/>
+        <Image source={require('@/assets/images/logo-igreja.png')} style={styles.logo} resizeMode="contain" />
         <Text style={styles.churchName}>IPB Calvário</Text>
         <Text style={styles.subTitle}>Seja bem-vindo!</Text>
       </View>
 
-      {/* Versículo */}
       <View style={styles.card}>
         <View style={styles.cardHeader}>
           <Ionicons name="book" size={20} color="#6a1b9a" />
           <Text style={styles.cardTitle}>Versículo do Dia</Text>
         </View>
-        <Text style={styles.verseText}>"{VERSICULO_DO_DIA.texto}"</Text>
-        <Text style={styles.verseRef}>- {VERSICULO_DO_DIA.ref}</Text>
+        {versiculoDoDia ? (
+          <>
+            <Text style={styles.verseText}>"{versiculoDoDia.texto}"</Text>
+            <Text style={styles.verseRef}>- {versiculoDoDia.ref}</Text>
+
+            <TouchableOpacity style={styles.readMoreBtn} onPress={lerCapituloCompleto}>
+              <Text style={styles.readMoreText}>Ler capítulo completo</Text>
+              <Ionicons name="arrow-forward" size={14} color="#fff" />
+            </TouchableOpacity>
+          </>
+        ) : (
+          <ActivityIndicator color="#4a148c" />
+        )}
       </View>
 
-      {/* Quadro de Avisos (FIREBASE) */}
       <Text style={styles.sectionTitle}>Quadro de Avisos</Text>
       {avisos.length === 0 ? (
         <View style={styles.emptyContainer}>
-           <Ionicons name="notifications-off-outline" size={40} color="#ccc" />
-           <Text style={styles.emptyText}>Nenhum aviso cadastrado.</Text>
+          <Ionicons name="notifications-off-outline" size={40} color="#ccc" />
+          <Text style={styles.emptyText}>Nenhum aviso cadastrado.</Text>
         </View>
       ) : (
         avisos.map((aviso) => (
@@ -101,15 +190,13 @@ export default function HomeScreen() {
         ))
       )}
 
-      {/* Aniversariantes (FIREBASE) */}
       <View style={styles.bdaySection}>
         <View style={styles.bdayHeader}>
           <Ionicons name="gift-outline" size={24} color="#4a148c" />
           <Text style={styles.sectionTitleBday}>Aniversariantes de {nomeMesAtual}</Text>
         </View>
-
         {aniversariantes.length === 0 ? (
-          <Text style={styles.emptyText}>Nenhum aniversariante encontrado neste mês.</Text>
+          <Text style={styles.emptyText}>Nenhum aniversariante encontrado.</Text>
         ) : (
           <View style={styles.bdayList}>
             {aniversariantes.map((pessoa) => (
@@ -124,8 +211,23 @@ export default function HomeScreen() {
           </View>
         )}
       </View>
-      
-      <View style={{ height: 40 }} />
+     
+
+
+
+
+
+      {/* <TouchableOpacity
+        style={{ margin: 20, padding: 15, backgroundColor: '#FF8C00', borderRadius: 8 }}
+        onPress={() => router.push('/upload_hinos')}
+      >
+        <Text style={{ textAlign: 'center', fontWeight: 'bold', color: '#fff' }}>
+          ⚠️ ADMIN: ENVIAR HINOS AGORA
+        </Text>
+      </TouchableOpacity>
+
+      <View style={{ height: 40 }} /> */}
+
     </ScrollView>
   );
 }
@@ -141,6 +243,8 @@ const styles = StyleSheet.create({
   cardTitle: { marginLeft: 10, fontWeight: 'bold', color: '#4a148c', fontSize: 16 },
   verseText: { fontStyle: 'italic', fontSize: 16, color: '#4a148c', lineHeight: 24 },
   verseRef: { textAlign: 'right', marginTop: 10, fontWeight: 'bold', color: '#8e24aa' },
+  readMoreBtn: { backgroundColor: '#7b1fa2', padding: 10, borderRadius: 8, marginTop: 15, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', alignSelf: 'flex-start' },
+  readMoreText: { color: '#fff', fontWeight: 'bold', marginRight: 5, fontSize: 12 },
   sectionTitle: { marginLeft: 15, fontSize: 20, fontWeight: 'bold', color: '#4a148c', marginBottom: 15, marginTop: 10 },
   avisoCard: { backgroundColor: '#fff', marginHorizontal: 15, marginBottom: 10, padding: 15, borderRadius: 12, borderLeftWidth: 5, borderLeftColor: '#8e24aa', elevation: 2 },
   avisoDate: { fontSize: 12, color: '#7b1fa2', fontWeight: 'bold' },

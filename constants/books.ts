@@ -51,7 +51,7 @@ export const CAPITULOS_POR_LIVRO: { [key: string]: number } = {
 
 // Lista de versões disponíveis
 export const VERSOES_BIBLIA = [
-  { nome: 'Nova Versão Int.', sigla: 'nvi' },     
-  { nome: 'Almeida Rev. Atualizada', sigla: 'ra' }, 
-  { nome: 'Almeida Corr. Fiel', sigla: 'acf' },   
+  { nome: 'Nova Versão Int. (NVI)', sigla: 'nvi' },     
+  { nome: 'Almeida Rev. Atualizada (RA)', sigla: 'ra' }, 
+  { nome: 'Almeida Corr. Fiel (ACF)', sigla: 'acf' },   
 ];
