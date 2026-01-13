@@ -4,12 +4,12 @@ import { getFirestore } from "firebase/firestore";
 
 // CONFIGURAÇÃO FIREBASE:
 const firebaseConfig = {
-  apiKey: "AIzaSyDnuGTiGAHqUN8YMVuhc3GMOIfO-NTpwfk",
-  authDomain: "ipb-calvario-app.firebaseapp.com",
-  projectId: "ipb-calvario-app",
-  storageBucket: "ipb-calvario-app.firebasestorage.app",
-  messagingSenderId: "841095868850",
-  appId: "1:841095868850:web:1bdb03f9c6024233ba74ab"
+  apiKey: process.env.EXPO_PUBLIC_FIREBASE_API_KEY,
+  authDomain: process.env.EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN,
+  projectId: process.env.EXPO_PUBLIC_FIREBASE_PROJECT_ID,
+  storageBucket: process.env.EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: process.env.EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
+  appId: process.env.EXPO_PUBLIC_FIREBASE_APP_ID
 };
 
 // Inicializa o Firebase
