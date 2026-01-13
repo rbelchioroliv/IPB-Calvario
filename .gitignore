@@ -43,3 +43,6 @@ app-example
 # generated native folders
 /ios
 /android
+
+# Ignorar chaves de serviço do Firebase
+*-firebase-adminsdk-*.json

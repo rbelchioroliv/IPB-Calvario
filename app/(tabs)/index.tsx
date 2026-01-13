@@ -1,11 +1,13 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, Image, ActivityIndicator, RefreshControl, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Image, ActivityIndicator, RefreshControl, TouchableOpacity, TouchableWithoutFeedback, Modal, TextInput, Alert, Button } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { db } from '@/services/firebaseConfig';
 import { collection, getDocs } from 'firebase/firestore';
 import { API_TOKEN } from '@/constants/churchData';
 import { useRouter } from 'expo-router';
+
+import { useAdmin } from '@/context/AdminContext';
 
 export default function HomeScreen() {
   const router = useRouter();
@@ -20,6 +22,34 @@ export default function HomeScreen() {
   const nomesMeses = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
   const nomeMesAtual = nomesMeses[dataHojeObj.getMonth()];
   const dataFormatadaHoje = dataHojeObj.toISOString().split('T')[0];
+
+
+
+  const { isAdmin, loginAdmin, logoutAdmin } = useAdmin();
+  const [clickCount, setClickCount] = useState(0);
+  const [showLoginModal, setShowLoginModal] = useState(false);
+  const [senhaInput, setSenhaInput] = useState('');
+
+  const handleLogoPress = () => {
+    if (isAdmin) return;
+    const novoCount = clickCount + 1;
+    setClickCount(novoCount);
+    if (novoCount >= 7) {
+      setClickCount(0);
+      setShowLoginModal(true);
+    }
+    setTimeout(() => setClickCount(0), 3000); // Reseta se demorar
+  };
+
+  const tentarLogin = () => {
+    if (loginAdmin(senhaInput)) {
+      setShowLoginModal(false);
+      Alert.alert("Sucesso", "Painel liberado!");
+    } else {
+      Alert.alert("Erro", "Senha incorreta.");
+      setClickCount(0);
+    }
+  };
 
 
   const carregarVersiculoDoDia = async () => {
@@ -149,7 +179,11 @@ export default function HomeScreen() {
   return (
     <ScrollView style={styles.container} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}>
       <View style={styles.header}>
-        <Image source={require('@/assets/images/logo-igreja.png')} style={styles.logo} resizeMode="contain" />
+
+        <TouchableWithoutFeedback onPress={handleLogoPress}>
+          <Image source={require('@/assets/images/logo-igreja.png')} style={styles.logo} resizeMode="contain" />
+        </TouchableWithoutFeedback>
+
         <Text style={styles.churchName}>IPB Calvário</Text>
         <Text style={styles.subTitle}>Seja bem-vindo!</Text>
       </View>
@@ -211,7 +245,55 @@ export default function HomeScreen() {
           </View>
         )}
       </View>
-     
+
+
+
+      {isAdmin ? (
+        <View style={{ margin: 20, backgroundColor: '#fff', borderRadius: 10, padding: 15, elevation: 3, borderLeftWidth: 5, borderLeftColor: '#4a148c' }}>
+          <Text style={{ fontWeight: 'bold', fontSize: 16, color: '#4a148c', marginBottom: 10 }}>
+            👮 Área Restrita (Admin)
+          </Text>
+
+          <TouchableOpacity
+            style={{ backgroundColor: '#4a148c', padding: 12, borderRadius: 8, marginBottom: 10 }}
+            onPress={() => router.push('/admin')} // <--- LEVA PARA O MENU NOVO
+          >
+            <Text style={{ color: '#fff', textAlign: 'center', fontWeight: 'bold' }}>
+              ACESSAR PAINEL DE CONTROLE
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity onPress={logoutAdmin} style={{ padding: 10 }}>
+            <Text style={{ color: 'red', textAlign: 'center', fontSize: 12 }}>Sair do Modo Admin</Text>
+          </TouchableOpacity>
+        </View>
+      ) : (
+        /* Espaço vazio para quem não é admin */
+        <View style={{ height: 20 }} />
+      )}
+
+      {/* --- O SEGREDO DO LOGO (MODAL) --- */}
+      <Modal visible={showLoginModal} transparent animationType="fade">
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', alignItems: 'center' }}>
+          <View style={{ width: '80%', backgroundColor: '#fff', padding: 20, borderRadius: 15, elevation: 10 }}>
+            <Text style={{ fontSize: 18, fontWeight: 'bold', marginBottom: 15, textAlign: 'center' }}>🔒 Acesso da Liderança</Text>
+
+            <TextInput
+              placeholder="Digite a Senha Mestra"
+              secureTextEntry
+              keyboardType="numeric"
+              style={{ borderWidth: 1, borderColor: '#ccc', borderRadius: 8, padding: 10, marginBottom: 20, fontSize: 16, textAlign: 'center' }}
+              value={senhaInput}
+              onChangeText={setSenhaInput}
+            />
+
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+              <Button title="Cancelar" color="#999" onPress={() => setShowLoginModal(false)} />
+              <Button title="Entrar" color="#4a148c" onPress={tentarLogin} />
+            </View>
+          </View>
+        </View>
+      </Modal>
 
 
 
