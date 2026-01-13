@@ -1,72 +1,224 @@
-import React, { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ActivityIndicator } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ActivityIndicator, Modal, SafeAreaView, Button } from 'react-native';
 import { db } from '@/services/firebaseConfig';
-import { collection, addDoc } from 'firebase/firestore';
-import { useRouter } from 'expo-router';
+import { collection, addDoc, getDocs, query, where, doc, getDoc, updateDoc } from 'firebase/firestore';
+import { useRouter, useLocalSearchParams } from 'expo-router';
+import { Calendar } from 'react-native-calendars';
+import { Ionicons } from '@expo/vector-icons';
 
 export default function AddEvento() {
   const router = useRouter();
+  const { editId } = useLocalSearchParams(); // Captura o ID caso seja edição
+
   const [titulo, setTitulo] = useState('');
-  const [data, setData] = useState('');
   const [sobre, setSobre] = useState('');
   const [loading, setLoading] = useState(false);
 
+  // Campos de Data e Hora
+  const [selectedDate, setSelectedDate] = useState(''); // Formato YYYY-MM-DD
+  const [horaInicio, setHoraInicio] = useState('');     // Formato HH:mm
+  const [horaFim, setHoraFim] = useState('');           // Formato HH:mm
+  const [showCalendar, setShowCalendar] = useState(false);
+
+  // Carregar dados caso seja edição
+  useEffect(() => {
+    if (editId) {
+      carregarDadosEdicao();
+    }
+  }, [editId]);
+
+  const carregarDadosEdicao = async () => {
+    setLoading(true);
+    try {
+      const docRef = doc(db, "eventos", editId as string);
+      const docSnap = await getDoc(docRef);
+
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        setTitulo(data.titulo);
+        setSobre(data.descricao);
+        setSelectedDate(data.dataISO);
+        setHoraInicio(data.horaInicio);
+        setHoraFim(data.horaFim);
+      }
+    } catch (error) {
+      Alert.alert("Erro", "Não foi possível carregar os dados do evento.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Função para validar se um horário sobrepõe outro
+  // Lógica: (Início1 < Fim2) && (Fim1 > Início2)
+  const existeConflito = (hIn: string, hFim: string, agendaIn: string, agendaFim: string): boolean => {
+    return hIn < agendaFim && hFim > agendaIn;
+  };
+
   const salvarEvento = async () => {
-    if (!titulo || !data || !sobre) {
-      Alert.alert("Erro", "Preencha todos os campos!");
+    // 1. Validação básica de campos
+    if (!titulo || !selectedDate || !horaInicio || !horaFim || !sobre) {
+      Alert.alert("Erro", "Preencha todos os campos, incluindo data e horários!");
+      return;
+    }
+
+    // 2. Validação de formato de hora (simples)
+    const regexHora = /^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/;
+    if (!regexHora.test(horaInicio) || !regexHora.test(horaFim)) {
+      Alert.alert("Erro", "Use o formato de hora 00:00");
+      return;
+    }
+
+    if (horaInicio >= horaFim) {
+      Alert.alert("Erro", "O horário de início deve ser antes do término!");
       return;
     }
 
     setLoading(true);
+
     try {
-      // Salva na coleção "eventos" do Firebase
-      await addDoc(collection(db, "eventos"), {
-        titulo: titulo,
-        data: data,
-        descricao: sobre,
-        criadoEm: new Date()
+      // 3. BUSCA CONFLITOS NO FIREBASE
+      const q = query(
+        collection(db, "eventos"),
+        where("dataISO", "==", selectedDate)
+      );
+
+      const querySnapshot = await getDocs(q);
+      let conflitoEncontrado = null;
+
+      querySnapshot.forEach((docSnap) => {
+        // Se estivermos editando, ignoramos o próprio documento na verificação de conflito
+        if (editId && docSnap.id === editId) return;
+
+        const eventoExistente = docSnap.data();
+        if (existeConflito(horaInicio, horaFim, eventoExistente.horaInicio, eventoExistente.horaFim)) {
+          conflitoEncontrado = eventoExistente.titulo;
+        }
       });
-      
-      Alert.alert("Sucesso", "Evento adicionado com sucesso!");
-      router.back(); // Volta para o menu
+
+      if (conflitoEncontrado) {
+        Alert.alert(
+          "⚠️ Conflito de Agenda",
+          `Já existe o evento "${conflitoEncontrado}" neste mesmo dia e horário. Escolha outro período.`
+        );
+        setLoading(false);
+        return;
+      }
+
+      // 4. PREPARAR DADOS
+      const dadosEvento = {
+        titulo,
+        descricao: sobre,
+        dataISO: selectedDate,
+        data: selectedDate.split('-').reverse().join('/'),
+        horaInicio,
+        horaFim,
+        criadoEm: new Date()
+      };
+
+      // 5. SALVAR OU ATUALIZAR
+      if (editId) {
+        await updateDoc(doc(db, "eventos", editId as string), dadosEvento);
+        Alert.alert("Sucesso", "Evento atualizado com sucesso!");
+      } else {
+        await addDoc(collection(db, "eventos"), dadosEvento);
+        Alert.alert("Sucesso", "Evento agendado com sucesso!");
+      }
+
+      router.back();
     } catch (e: any) {
-      Alert.alert("Erro ao salvar", e.message);
+      Alert.alert("Erro", e.message);
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Novo Evento</Text>
+    <SafeAreaView style={styles.container}>
+      <Text style={styles.title}>{editId ? "Editar Evento" : "Novo Evento"}</Text>
 
       <Text style={styles.label}>Título do Evento</Text>
-      <TextInput style={styles.input} placeholder="Ex: Culto de Jovens" value={titulo} onChangeText={setTitulo} />
+      <TextInput style={styles.input} placeholder="Ex: Culto de Oração" value={titulo} onChangeText={setTitulo} />
 
-      <Text style={styles.label}>Data (Texto)</Text>
-      <TextInput style={styles.input} placeholder="Ex: 25/12 às 19h" value={data} onChangeText={setData} />
+      {/* SELEÇÃO DE DATA */}
+      <Text style={styles.label}>Data</Text>
+      <TouchableOpacity style={styles.selector} onPress={() => setShowCalendar(true)}>
+        <Ionicons name="calendar-outline" size={20} color="#4a148c" />
+        <Text style={styles.selectorText}>
+          {selectedDate ? selectedDate.split('-').reverse().join('/') : "Selecionar Data"}
+        </Text>
+      </TouchableOpacity>
 
-      <Text style={styles.label}>Sobre (Descrição)</Text>
-      <TextInput 
-        style={[styles.input, { height: 100, textAlignVertical: 'top' }]} 
-        placeholder="Detalhes do evento..." 
-        multiline 
-        value={sobre} 
-        onChangeText={setSobre} 
+      {/* SELEÇÃO DE HORAS */}
+      <View style={{ flexDirection: 'row', gap: 15 }}>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.label}>Início (HH:mm)</Text>
+          <TextInput
+            style={styles.input}
+            placeholder="19:00"
+            keyboardType="numbers-and-punctuation"
+            value={horaInicio}
+            onChangeText={setHoraInicio}
+            maxLength={5}
+          />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.label}>Término (HH:mm)</Text>
+          <TextInput
+            style={styles.input}
+            placeholder="21:00"
+            keyboardType="numbers-and-punctuation"
+            value={horaFim}
+            onChangeText={setHoraFim}
+            maxLength={5}
+          />
+        </View>
+      </View>
+
+      <Text style={styles.label}>Sobre o evento</Text>
+      <TextInput
+        style={[styles.input, { height: 80, textAlignVertical: 'top' }]}
+        placeholder="Detalhes..."
+        multiline
+        value={sobre}
+        onChangeText={setSobre}
       />
 
       <TouchableOpacity style={styles.btn} onPress={salvarEvento} disabled={loading}>
-        {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnText}>SALVAR EVENTO</Text>}
+        {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnText}>{editId ? "SALVAR ALTERAÇÕES" : "VERIFICAR E SALVAR"}</Text>}
       </TouchableOpacity>
-    </View>
+
+      {/* MODAL DO CALENDÁRIO */}
+      <Modal visible={showCalendar} transparent animationType="slide">
+        <View style={styles.modalBg}>
+          <View style={styles.calendarCard}>
+            <Calendar
+              onDayPress={(day) => {
+                setSelectedDate(day.dateString);
+                setShowCalendar(false);
+              }}
+              markedDates={{ [selectedDate]: { selected: true, selectedColor: '#4a148c' } }}
+            />
+            <TouchableOpacity style={styles.closeBtn} onPress={() => setShowCalendar(false)}>
+              <Text style={{ color: '#fff', fontWeight: 'bold' }}>FECHAR</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, padding: 20, backgroundColor: '#fff' },
   title: { fontSize: 22, fontWeight: 'bold', color: '#4a148c', marginBottom: 20, textAlign: 'center' },
-  label: { fontSize: 14, fontWeight: 'bold', color: '#666', marginBottom: 5, marginTop: 10 },
+  label: { fontSize: 14, fontWeight: 'bold', color: '#666', marginBottom: 5, marginTop: 15 },
   input: { backgroundColor: '#f5f5f5', padding: 12, borderRadius: 8, borderWidth: 1, borderColor: '#eee', fontSize: 16 },
+  selector: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#f3e5f5', padding: 12, borderRadius: 8, borderWidth: 1, borderColor: '#4a148c' },
+  selectorText: { marginLeft: 10, fontSize: 16, color: '#4a148c' },
   btn: { backgroundColor: '#4a148c', padding: 15, borderRadius: 10, marginTop: 30, alignItems: 'center' },
-  btnText: { color: '#fff', fontWeight: 'bold', fontSize: 16 }
+  btnText: { color: '#fff', fontWeight: 'bold', fontSize: 16 },
+  modalBg: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', padding: 20 },
+  calendarCard: { backgroundColor: '#fff', borderRadius: 20, padding: 10, elevation: 10 },
+  closeBtn: { backgroundColor: '#4a148c', padding: 15, borderRadius: 10, marginTop: 10, alignItems: 'center' }
 });

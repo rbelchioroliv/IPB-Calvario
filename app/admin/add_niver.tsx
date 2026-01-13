@@ -1,15 +1,43 @@
-import React, { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ActivityIndicator } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ActivityIndicator, SafeAreaView } from 'react-native';
 import { db } from '@/services/firebaseConfig';
-import { collection, addDoc } from 'firebase/firestore';
-import { useRouter } from 'expo-router';
+import { collection, addDoc, doc, getDoc, updateDoc } from 'firebase/firestore';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 
 export default function AddNiver() {
   const router = useRouter();
+  const { editId } = useLocalSearchParams(); // Captura o ID para edição
+
   const [nome, setNome] = useState('');
   const [dia, setDia] = useState('');
   const [mes, setMes] = useState('');
   const [loading, setLoading] = useState(false);
+
+  // Carrega os dados se for edição
+  useEffect(() => {
+    if (editId) {
+      carregarDadosEdicao();
+    }
+  }, [editId]);
+
+  const carregarDadosEdicao = async () => {
+    setLoading(true);
+    try {
+      const docRef = doc(db, "aniversariantes", editId as string);
+      const docSnap = await getDoc(docRef);
+
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        setNome(data.nome);
+        setDia(data.dia.toString());
+        setMes(data.mes.toString());
+      }
+    } catch (error) {
+      Alert.alert("Erro", "Falha ao carregar aniversariante.");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const salvarNiver = async () => {
     if (!nome || !dia || !mes) {
@@ -17,21 +45,34 @@ export default function AddNiver() {
       return;
     }
 
+    const diaNum = parseInt(dia);
+    const mesNum = parseInt(mes);
+
+    if (isNaN(diaNum) || diaNum < 1 || diaNum > 31 || isNaN(mesNum) || mesNum < 1 || mesNum > 12) {
+      Alert.alert("Erro", "Data ou mês inválidos!");
+      return;
+    }
+
     setLoading(true);
     try {
-      // Salva na coleção "aniversariantes"
-      // Convertemos dia e mes para número para poder ordenar depois
-      await addDoc(collection(db, "aniversariantes"), {
+      const dados = {
         nome: nome,
-        dia: parseInt(dia),
-        mes: parseInt(mes)
-      });
-      
-      Alert.alert("Sucesso", "Aniversariante cadastrado!");
-      // Limpa os campos para adicionar outro se quiser
-      setNome('');
-      setDia('');
-      setMes('');
+        dia: diaNum,
+        mes: mesNum,
+        criadoEm: new Date()
+      };
+
+      if (editId) {
+        // ATUALIZA
+        await updateDoc(doc(db, "aniversariantes", editId as string), dados);
+        Alert.alert("Sucesso", "Dados atualizados com sucesso!");
+      } else {
+        // CRIA NOVO
+        await addDoc(collection(db, "aniversariantes"), dados);
+        Alert.alert("Sucesso", "Aniversariante cadastrado!");
+      }
+
+      router.back();
     } catch (e: any) {
       Alert.alert("Erro", e.message);
     } finally {
@@ -40,49 +81,58 @@ export default function AddNiver() {
   };
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Novo Aniversariante</Text>
+    <SafeAreaView style={styles.container}>
+      <Text style={styles.title}>{editId ? "Editar Aniversariante" : "Novo Aniversariante"}</Text>
 
-      <Text style={styles.label}>Nome do Membro</Text>
-      <TextInput style={styles.input} placeholder="Ex: Maria Silva" value={nome} onChangeText={setNome} />
+      <Text style={styles.label}>Nome Completo</Text>
+      <TextInput 
+        style={styles.input} 
+        placeholder="Ex: João Silva" 
+        value={nome} 
+        onChangeText={setNome} 
+      />
 
-      <View style={{flexDirection: 'row', gap: 15}}>
-        <View style={{flex: 1}}>
-            <Text style={styles.label}>Dia (Número)</Text>
-            <TextInput 
-                style={styles.input} 
-                placeholder="Ex: 15" 
-                keyboardType="numeric" 
-                value={dia} 
-                onChangeText={setDia} 
-                maxLength={2}
-            />
+      <View style={{ flexDirection: 'row', gap: 15, marginTop: 15 }}>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.label}>Dia (1-31)</Text>
+          <TextInput 
+            style={styles.input} 
+            placeholder="Ex: 25" 
+            keyboardType="numeric"
+            maxLength={2}
+            value={dia} 
+            onChangeText={setDia} 
+          />
         </View>
-        <View style={{flex: 1}}>
-            <Text style={styles.label}>Mês (Número)</Text>
-            <TextInput 
-                style={styles.input} 
-                placeholder="Ex: 10" 
-                keyboardType="numeric" 
-                value={mes} 
-                onChangeText={setMes} 
-                maxLength={2}
-            />
+        <View style={{ flex: 1 }}>
+          <Text style={styles.label}>Mês (1-12)</Text>
+          <TextInput 
+            style={styles.input} 
+            placeholder="Ex: 12" 
+            keyboardType="numeric"
+            maxLength={2}
+            value={mes} 
+            onChangeText={setMes} 
+          />
         </View>
       </View>
 
-      <TouchableOpacity style={[styles.btn, { backgroundColor: '#01579b' }]} onPress={salvarNiver} disabled={loading}>
-        {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnText}>CADASTRAR</Text>}
+      <TouchableOpacity style={styles.btn} onPress={salvarNiver} disabled={loading}>
+        {loading ? (
+          <ActivityIndicator color="#fff" />
+        ) : (
+          <Text style={styles.btnText}>{editId ? "ATUALIZAR DADOS" : "CADASTRAR"}</Text>
+        )}
       </TouchableOpacity>
-    </View>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, padding: 20, backgroundColor: '#fff' },
-  title: { fontSize: 22, fontWeight: 'bold', color: '#01579b', marginBottom: 20, textAlign: 'center' },
-  label: { fontSize: 14, fontWeight: 'bold', color: '#666', marginBottom: 5, marginTop: 10 },
+  title: { fontSize: 22, fontWeight: 'bold', color: '#4a148c', marginBottom: 20, textAlign: 'center' },
+  label: { fontSize: 14, fontWeight: 'bold', color: '#666', marginBottom: 5 },
   input: { backgroundColor: '#f5f5f5', padding: 12, borderRadius: 8, borderWidth: 1, borderColor: '#eee', fontSize: 16 },
-  btn: { padding: 15, borderRadius: 10, marginTop: 30, alignItems: 'center' },
+  btn: { backgroundColor: '#4a148c', padding: 15, borderRadius: 10, marginTop: 30, alignItems: 'center' },
   btnText: { color: '#fff', fontWeight: 'bold', fontSize: 16 }
 });

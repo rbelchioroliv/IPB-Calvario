@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, ScrollView, Image, ActivityIndicator, RefreshCo
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { db } from '@/services/firebaseConfig';
-import { collection, getDocs } from 'firebase/firestore';
+import { collection, getDocs, query, orderBy, onSnapshot, doc, deleteDoc, updateDoc } from 'firebase/firestore'; // Adicionado doc, deleteDoc, updateDoc
 import { API_TOKEN } from '@/constants/churchData';
 import { useRouter } from 'expo-router';
 
@@ -23,12 +23,36 @@ export default function HomeScreen() {
   const nomeMesAtual = nomesMeses[dataHojeObj.getMonth()];
   const dataFormatadaHoje = dataHojeObj.toISOString().split('T')[0];
 
-
-
   const { isAdmin, loginAdmin, logoutAdmin } = useAdmin();
   const [clickCount, setClickCount] = useState(0);
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [senhaInput, setSenhaInput] = useState('');
+
+  // --- NOVAS FUNÇÕES DE ADMIN ---
+
+  const handleTogglePin = async (id: string, currentStatus: boolean) => {
+    try {
+      await updateDoc(doc(db, "avisos", id), { isPinned: !currentStatus });
+    } catch (e) {
+      Alert.alert("Erro", "Falha ao fixar aviso. Verifique o índice no Firebase.");
+    }
+  };
+
+  const handleDeleteAviso = (id: string) => {
+    Alert.alert("Excluir Aviso", "Tem certeza que deseja apagar este aviso?", [
+      { text: "Cancelar" },
+      { text: "Excluir", style: 'destructive', onPress: async () => await deleteDoc(doc(db, "avisos", id)) }
+    ]);
+  };
+
+  const handleDeleteNiver = (id: string) => {
+    Alert.alert("Remover Aniversariante", "Deseja remover este membro da lista?", [
+      { text: "Cancelar" },
+      { text: "Remover", style: 'destructive', onPress: async () => await deleteDoc(doc(db, "aniversariantes", id)) }
+    ]);
+  };
+
+  // --- LÓGICA EXISTENTE ---
 
   const handleLogoPress = () => {
     if (isAdmin) return;
@@ -38,7 +62,7 @@ export default function HomeScreen() {
       setClickCount(0);
       setShowLoginModal(true);
     }
-    setTimeout(() => setClickCount(0), 3000); // Reseta se demorar
+    setTimeout(() => setClickCount(0), 3000);
   };
 
   const tentarLogin = () => {
@@ -51,16 +75,13 @@ export default function HomeScreen() {
     }
   };
 
-
   const carregarVersiculoDoDia = async () => {
     try {
       const dataSalva = await AsyncStorage.getItem('@versiculo_data');
       const versiculoSalvoStr = await AsyncStorage.getItem('@versiculo_atual');
       const historicoStr = await AsyncStorage.getItem('@versiculo_historico');
-
       let historico = historicoStr ? JSON.parse(historicoStr) : [];
       let usarSalvo = false;
-
 
       if (dataSalva === dataFormatadaHoje && versiculoSalvoStr) {
         const v = JSON.parse(versiculoSalvoStr);
@@ -72,25 +93,16 @@ export default function HomeScreen() {
 
       if (usarSalvo) return;
 
-      console.log("Buscando novo versículo completo...");
-
       let novoVersiculo = null;
       let tentativas = 0;
-
       while (!novoVersiculo && tentativas < 5) {
-
         const response = await fetch('https://www.abibliadigital.com.br/api/verses/nvi/random', {
           method: 'GET',
           headers: { 'Authorization': `Bearer ${API_TOKEN}`, 'Accept': 'application/json' }
         });
-
         const data = await response.json();
-
-
         if (data.error) throw new Error("Erro API");
-
         const idVersiculo = `${data.book.abbrev.pt}-${data.chapter}-${data.number}`;
-
         if (!historico.includes(idVersiculo)) {
           novoVersiculo = data;
           historico.push(idVersiculo);
@@ -100,22 +112,17 @@ export default function HomeScreen() {
       }
 
       if (!novoVersiculo) return;
-
       const versiculoFormatado = {
         texto: novoVersiculo.text,
         ref: `${novoVersiculo.book.name} ${novoVersiculo.chapter}:${novoVersiculo.number}`,
         livro: novoVersiculo.book.name,
         capitulo: novoVersiculo.chapter
       };
-
       setVersiculoDoDia(versiculoFormatado);
       await AsyncStorage.setItem('@versiculo_data', dataFormatadaHoje);
       await AsyncStorage.setItem('@versiculo_atual', JSON.stringify(versiculoFormatado));
       await AsyncStorage.setItem('@versiculo_historico', JSON.stringify(historico));
-
     } catch (error) {
-      console.log("Erro versículo:", error);
-
       setVersiculoDoDia({
         texto: "Por isso não tema, pois estou com você; não tenha medo, pois sou o seu Deus.",
         ref: "Isaías 41:10",
@@ -129,15 +136,18 @@ export default function HomeScreen() {
     try {
       await carregarVersiculoDoDia();
 
-      const avisosRef = collection(db, "avisos");
-      const avisosSnapshot = await getDocs(avisosRef);
-      setAvisos(avisosSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      // Avisos em tempo real com ordenação (Fixados primeiro, depois por data)
+      const qAvisos = query(collection(db, "avisos"), orderBy("isPinned", "desc"), orderBy("criadoEm", "desc"));
+      onSnapshot(qAvisos, (snapshot) => {
+        setAvisos(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      });
 
-      const niverRef = collection(db, "aniversariantes");
-      const niverSnapshot = await getDocs(niverRef);
-      const listaNiver = niverSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as any));
-      const mesAtualNum = dataHojeObj.getMonth() + 1;
-      setAniversariantes(listaNiver.filter(p => p.mes === mesAtualNum).sort((a, b) => a.dia - b.dia));
+      // Aniversariantes em tempo real
+      onSnapshot(collection(db, "aniversariantes"), (snapshot) => {
+        const listaNiver = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as any));
+        const mesAtualNum = dataHojeObj.getMonth() + 1;
+        setAniversariantes(listaNiver.filter(p => p.mes === mesAtualNum).sort((a, b) => a.dia - b.dia));
+      });
 
     } catch (error) {
       console.log("Erro geral:", error);
@@ -152,9 +162,7 @@ export default function HomeScreen() {
 
   const lerCapituloCompleto = () => {
     if (versiculoDoDia && versiculoDoDia.livro && versiculoDoDia.capitulo) {
-
       router.push('/bible');
-
       router.replace({
         pathname: "/bible",
         params: {
@@ -179,11 +187,9 @@ export default function HomeScreen() {
   return (
     <ScrollView style={styles.container} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}>
       <View style={styles.header}>
-
         <TouchableWithoutFeedback onPress={handleLogoPress}>
           <Image source={require('@/assets/images/logo-igreja.png')} style={styles.logo} resizeMode="contain" />
         </TouchableWithoutFeedback>
-
         <Text style={styles.churchName}>IPB Calvário</Text>
         <Text style={styles.subTitle}>Seja bem-vindo!</Text>
       </View>
@@ -197,7 +203,6 @@ export default function HomeScreen() {
           <>
             <Text style={styles.verseText}>"{versiculoDoDia.texto}"</Text>
             <Text style={styles.verseRef}>- {versiculoDoDia.ref}</Text>
-
             <TouchableOpacity style={styles.readMoreBtn} onPress={lerCapituloCompleto}>
               <Text style={styles.readMoreText}>Ler capítulo completo</Text>
               <Ionicons name="arrow-forward" size={14} color="#fff" />
@@ -216,8 +221,24 @@ export default function HomeScreen() {
         </View>
       ) : (
         avisos.map((aviso) => (
-          <View key={aviso.id} style={styles.avisoCard}>
-            <Text style={styles.avisoDate}>{aviso.data}</Text>
+          <View key={aviso.id} style={[styles.avisoCard, aviso.isPinned && styles.avisoCardPinned]}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+              <Text style={styles.avisoDate}>{aviso.isPinned ? "📌 FIXADO" : aviso.data}</Text>
+
+              {isAdmin && (
+                <View style={{ flexDirection: 'row', gap: 15 }}>
+                  <TouchableOpacity onPress={() => handleTogglePin(aviso.id, aviso.isPinned)}>
+                    <Ionicons name="pin" size={18} color={aviso.isPinned ? "#ff9800" : "#ccc"} />
+                  </TouchableOpacity>
+                  <TouchableOpacity onPress={() => router.push({ pathname: '/admin/add_aviso', params: { editId: aviso.id } })}>
+                    <Ionicons name="create-outline" size={18} color="#4a148c" />
+                  </TouchableOpacity>
+                  <TouchableOpacity onPress={() => handleDeleteAviso(aviso.id)}>
+                    <Ionicons name="trash-outline" size={18} color="red" />
+                  </TouchableOpacity>
+                </View>
+              )}
+            </View>
             <Text style={styles.avisoTitle}>{aviso.titulo}</Text>
             <Text style={styles.avisoDesc}>{aviso.descricao}</Text>
           </View>
@@ -239,6 +260,20 @@ export default function HomeScreen() {
                   <Text style={styles.bdayDay}>Dia {pessoa.dia}</Text>
                 </View>
                 <Text style={styles.bdayName}>{pessoa.nome}</Text>
+
+                {isAdmin && (
+                  <View style={{ flexDirection: 'row', gap: 15, marginRight: 10 }}>
+                    {/* BOTÃO EDITAR */}
+                    <TouchableOpacity onPress={() => router.push({ pathname: '/admin/add_niver', params: { editId: pessoa.id } })}>
+                      <Ionicons name="create-outline" size={18} color="#4a148c" />
+                    </TouchableOpacity>
+
+                    {/* BOTÃO EXCLUIR */}
+                    <TouchableOpacity onPress={() => handleDeleteNiver(pessoa.id)}>
+                      <Ionicons name="trash-outline" size={18} color="red" />
+                    </TouchableOpacity>
+                  </View>
+                )}
                 <Ionicons name="happy-outline" size={18} color="#9c27b0" />
               </View>
             ))}
@@ -246,38 +281,31 @@ export default function HomeScreen() {
         )}
       </View>
 
-
-
       {isAdmin ? (
         <View style={{ margin: 20, backgroundColor: '#fff', borderRadius: 10, padding: 15, elevation: 3, borderLeftWidth: 5, borderLeftColor: '#4a148c' }}>
           <Text style={{ fontWeight: 'bold', fontSize: 16, color: '#4a148c', marginBottom: 10 }}>
             👮 Área Restrita (Admin)
           </Text>
-
           <TouchableOpacity
             style={{ backgroundColor: '#4a148c', padding: 12, borderRadius: 8, marginBottom: 10 }}
-            onPress={() => router.push('/admin')} // <--- LEVA PARA O MENU NOVO
+            onPress={() => router.push('/admin')}
           >
             <Text style={{ color: '#fff', textAlign: 'center', fontWeight: 'bold' }}>
               ACESSAR PAINEL DE CONTROLE
             </Text>
           </TouchableOpacity>
-
           <TouchableOpacity onPress={logoutAdmin} style={{ padding: 10 }}>
             <Text style={{ color: 'red', textAlign: 'center', fontSize: 12 }}>Sair do Modo Admin</Text>
           </TouchableOpacity>
         </View>
       ) : (
-        /* Espaço vazio para quem não é admin */
         <View style={{ height: 20 }} />
       )}
 
-      {/* --- O SEGREDO DO LOGO (MODAL) --- */}
       <Modal visible={showLoginModal} transparent animationType="fade">
         <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', alignItems: 'center' }}>
           <View style={{ width: '80%', backgroundColor: '#fff', padding: 20, borderRadius: 15, elevation: 10 }}>
             <Text style={{ fontSize: 18, fontWeight: 'bold', marginBottom: 15, textAlign: 'center' }}>🔒 Acesso da Liderança</Text>
-
             <TextInput
               placeholder="Digite a Senha Mestra"
               secureTextEntry
@@ -286,7 +314,6 @@ export default function HomeScreen() {
               value={senhaInput}
               onChangeText={setSenhaInput}
             />
-
             <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
               <Button title="Cancelar" color="#999" onPress={() => setShowLoginModal(false)} />
               <Button title="Entrar" color="#4a148c" onPress={tentarLogin} />
@@ -294,22 +321,6 @@ export default function HomeScreen() {
           </View>
         </View>
       </Modal>
-
-
-
-
-
-      {/* <TouchableOpacity
-        style={{ margin: 20, padding: 15, backgroundColor: '#FF8C00', borderRadius: 8 }}
-        onPress={() => router.push('/upload_hinos')}
-      >
-        <Text style={{ textAlign: 'center', fontWeight: 'bold', color: '#fff' }}>
-          ⚠️ ADMIN: ENVIAR HINOS AGORA
-        </Text>
-      </TouchableOpacity>
-
-      <View style={{ height: 40 }} /> */}
-
     </ScrollView>
   );
 }
@@ -329,6 +340,7 @@ const styles = StyleSheet.create({
   readMoreText: { color: '#fff', fontWeight: 'bold', marginRight: 5, fontSize: 12 },
   sectionTitle: { marginLeft: 15, fontSize: 20, fontWeight: 'bold', color: '#4a148c', marginBottom: 15, marginTop: 10 },
   avisoCard: { backgroundColor: '#fff', marginHorizontal: 15, marginBottom: 10, padding: 15, borderRadius: 12, borderLeftWidth: 5, borderLeftColor: '#8e24aa', elevation: 2 },
+  avisoCardPinned: { borderLeftColor: '#ff9800', backgroundColor: '#fff9f0' },
   avisoDate: { fontSize: 12, color: '#7b1fa2', fontWeight: 'bold' },
   avisoTitle: { fontSize: 18, fontWeight: 'bold', marginVertical: 5, color: '#4a148c' },
   avisoDesc: { color: '#4a148c', lineHeight: 20 },
