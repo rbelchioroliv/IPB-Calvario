@@ -6,19 +6,54 @@ import { AVISOS, VERSICULO_DO_DIA, ANIVERSARIANTES } from '@/constants/churchDat
 
 export default function HomeScreen() {
   const dataHoje = new Date();
-  const mesAtual = dataHoje.getMonth() + 1; 
-  
+  const mesAtual = dataHoje.getMonth() + 1;
+
   const aniversariantesDoMes = ANIVERSARIANTES.filter(p => p.mes === mesAtual).sort((a, b) => a.dia - b.dia);
 
   const nomesMeses = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
   const nomeMesAtual = nomesMeses[dataHoje.getMonth()];
+
+
+
+  // --- FUNÇÃO TEMPORÁRIA PARA GERAR TOKEN ---
+  // const criarUsuarioGerarToken = async () => {
+  //   try {
+  //     const response = await fetch('https://www.abibliadigital.com.br/api/users', {
+  //       method: 'POST',
+  //       headers: {
+  //         'Accept': 'application/json',
+  //         'Content-Type': 'application/json'
+  //       },
+  //       body: JSON.stringify({
+  //         name: "Igreja Calvario App",        // Pode ser qualquer nome
+  //         email: "app.calvario2@gmail.com",     // COLOCAR SEU EMAIL REAL AQUI
+  //         password: "Re21052003*",            // Crie uma senha simples (min 6 digitos)
+  //         notifications: false
+  //       })
+  //     });
+
+  //     const data = await response.json();
+
+  //     if (data.token) {
+  //       // Se deu certo, mostra o Token na tela!
+  //       Alert.alert("TOKEN GERADO!", `Anote este código (Token):\n\n${data.token}`);
+  //       console.log("Seu Token:", data.token);
+  //     } else {
+  //       // Se deu erro (ex: email já existe)
+  //       Alert.alert("Erro", data.msg || "Não foi possível criar.");
+  //     }
+  //   } catch (error) {
+  //     Alert.alert("Erro", "Falha na conexão.");
+  //   }
+  // };
+
 
   return (
     <ScrollView style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
         <Image
-          source={require('@/assets/images/logo-igreja.png')} 
+          source={require('@/assets/images/logo-igreja.png')}
           style={styles.logo}
           resizeMode="contain"
         />
@@ -46,6 +81,20 @@ export default function HomeScreen() {
         </View>
       ))}
 
+
+
+      {/* BOTÃO TEMPORÁRIO - APAGUE DEPOIS DE USAR
+      <TouchableOpacity 
+        style={{ backgroundColor: 'red', padding: 15, margin: 15, borderRadius: 10 }}
+        onPress={criarUsuarioGerarToken}
+      >
+        <Text style={{ color: 'white', fontWeight: 'bold', textAlign: 'center' }}>
+          CLIQUE AQUI PARA GERAR O TOKEN
+        </Text>
+      </TouchableOpacity> */}
+
+
+
       {/* Aniversariantes */}
       <View style={styles.bdaySection}>
         <View style={styles.bdayHeader}>
@@ -70,7 +119,7 @@ export default function HomeScreen() {
           </View>
         )}
       </View>
-      
+
       <View style={{ height: 40 }} />
     </ScrollView>
   );
@@ -90,7 +139,7 @@ const styles = StyleSheet.create({
   logo: { width: 100, height: 100, marginBottom: 5 },
   churchName: { fontSize: 26, fontWeight: 'bold', color: '#fff', marginBottom: 2, marginTop: 5 },
   subTitle: { fontSize: 16, color: '#e1bee7', fontWeight: '600' },
-  
+
   card: {
     backgroundColor: '#fff',
     margin: 15,
@@ -106,7 +155,7 @@ const styles = StyleSheet.create({
   cardTitle: { marginLeft: 10, fontWeight: 'bold', color: '#4a148c', fontSize: 16 },
   verseText: { fontStyle: 'italic', fontSize: 16, color: '#4a148c', lineHeight: 24 },
   verseRef: { textAlign: 'right', marginTop: 10, fontWeight: 'bold', color: '#8e24aa' },
-  
+
   sectionTitle: { marginLeft: 15, fontSize: 20, fontWeight: 'bold', color: '#4a148c', marginBottom: 15, marginTop: 10 },
   avisoCard: {
     backgroundColor: '#fff',
@@ -122,25 +171,25 @@ const styles = StyleSheet.create({
   avisoTitle: { fontSize: 18, fontWeight: 'bold', marginVertical: 5, color: '#4a148c' },
   avisoDesc: { color: '#4a148c', lineHeight: 20 },
 
- 
+
   bdaySection: { marginTop: 20, marginHorizontal: 15 },
   bdayHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 10 },
   sectionTitleBday: { fontSize: 20, fontWeight: 'bold', color: '#4a148c', marginLeft: 10 },
   bdayList: { backgroundColor: '#fff', borderRadius: 15, padding: 10, elevation: 2 },
   bdayItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#f0f0f0' },
-  
- 
-  bdayDateBox: { 
-    backgroundColor: '#f3e5f5', 
-    paddingHorizontal: 12, 
-    paddingVertical: 5,   
-    borderRadius: 8,       
-    alignItems: 'center', 
-    justifyContent: 'center', 
-    marginRight: 15 
+
+
+  bdayDateBox: {
+    backgroundColor: '#f3e5f5',
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 15
   },
   bdayDay: { fontWeight: 'bold', color: '#4a148c', fontSize: 14 },
-  
+
   bdayName: { flex: 1, fontSize: 16, color: '#333' },
   emptyText: { fontStyle: 'italic', color: '#888', marginLeft: 5 }
 });

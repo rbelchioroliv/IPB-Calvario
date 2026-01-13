@@ -5,9 +5,11 @@ export const AVISOS = [
 ];
 
 export const HINARIO = [
-  { id: 1, numero: '001', titulo: 'Santo! Santo! Santo!', letra: 'Santo! Santo! Santo! Deus onipotente!...' },
-  { id: 2, numero: '026', titulo: 'Ao Deus de Abraão Louvai', letra: 'Ao Deus de Abraão louvai, do vasto céu Senhor...' },
-  { id: 3, numero: '154', titulo: 'O Deus Fiel', letra: 'Tu és fiel, Senhor, meu Pai celeste...' },
+  { id: 1, numero: '001', titulo: 'Santo! Santo! Santo!', letra: 'Santo! Santo! Santo! Deus onipotente!\nCedo de manhã cantaremos teu louvor.\nSanto! Santo! Santo! Deus Jeová Triúno!\nÉs um só Deus, excelso Criador.' },
+  { id: 2, numero: '026', titulo: 'Ao Deus de Abraão Louvai', letra: 'Ao Deus de Abraão louvai, do vasto céu Senhor,\nEterno e poderoso Pai, e Deus de amor.\nAugusto Jeová, que terra e céu criou,\nMinha alma o Nome exaltará do grande Eu Sou.' },
+  { id: 3, numero: '154', titulo: 'O Deus Fiel', letra: 'Tu és fiel, Senhor, meu Pai celeste,\nPleno poder aos teus filhos darás.\nNunca mudaste, tu nunca faltaste,\nTal como eras, tu sempre serás.' },
+  { id: 4, numero: '155', titulo: 'Castelo Forte', letra: 'Castelo forte é nosso Deus,\nEspada e bom escudo.\nCom seu poder defende os seus\nEm todo transe agudo.' },
+  { id: 5, numero: '200', titulo: 'Vencendo Vem Jesus', letra: 'Já refulge a glória eterna de Jesus, o Rei dos reis,\nBreve os reinos deste mundo seguirão as suas leis!' },
 ];
 
 export const VERSICULO_DO_DIA = {
@@ -49,14 +51,16 @@ export const EVENTOS_CALENDARIO = [
 ];
 
 export const ANIVERSARIANTES = [
-  { id: 1, nome: 'Maria Silva', dia: 5, mes: 1 }, 
-  { id: 2, nome: 'Lucas Pereira', dia: 12, mes: 1 }, 
-  { id: 3, nome: 'Ana Souza', dia: 28, mes: 1 }, 
-  
-  { id: 4, nome: 'Pedro Santos', dia: 2, mes: 2 }, 
-  { id: 5, nome: 'Juliana Costa', dia: 15, mes: 2 }, 
-  
-  { id: 6, nome: 'Rev. Roberto', dia: 10, mes: 3 }, 
- 
+  { id: 1, nome: 'Maria Silva', dia: 5, mes: 1 },
+  { id: 2, nome: 'Lucas Pereira', dia: 12, mes: 1 },
+  { id: 3, nome: 'Ana Souza', dia: 28, mes: 1 },
+
+  { id: 4, nome: 'Pedro Santos', dia: 2, mes: 2 },
+  { id: 5, nome: 'Juliana Costa', dia: 15, mes: 2 },
+
+  { id: 6, nome: 'Rev. Roberto', dia: 10, mes: 3 },
+
 ];
+
+export const API_TOKEN = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdHIiOiJUdWUgSmFuIDEzIDIwMjYgMDE6NDE6NDkgR01UKzAwMDAuYXBwLmNhbHZhcmlvMkBnbWFpbC5jb20iLCJpYXQiOjE3NjgyNjg1MDl9.emOC-Yxhqm3CxOyDV3vcMSplQUSzpK3Pmto8kUtRBbo";
 
