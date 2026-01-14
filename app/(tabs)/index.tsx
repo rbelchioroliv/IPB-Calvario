@@ -162,8 +162,9 @@ export default function HomeScreen() {
 
   const lerCapituloCompleto = () => {
     if (versiculoDoDia && versiculoDoDia.livro && versiculoDoDia.capitulo) {
-      router.push('/bible');
-      router.replace({
+      // Use apenas o push com os parâmetros. 
+      // O Expo Router cuidará de levar para a aba certa.
+      router.push({
         pathname: "/bible",
         params: {
           livroAutomatico: versiculoDoDia.livro,
@@ -171,7 +172,7 @@ export default function HomeScreen() {
         }
       });
     } else {
-      alert("Erro: Informações do capítulo não disponíveis. Atualize a tela.");
+      Alert.alert("Erro", "Informações do capítulo não disponíveis. Atualize a tela.");
       onRefresh();
     }
   };

@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "841095868850",
+    "project_id": "ipb-calvario-app",
+    "storage_bucket": "ipb-calvario-app.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:841095868850:android:563696c71af9dce6ba74ab",
+        "android_client_info": {
+          "package_name": "com.calvario.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyB8bLJbuuuwaeHvcoejQIuDtaLtM3-YChA"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

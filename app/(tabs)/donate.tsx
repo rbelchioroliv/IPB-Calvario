@@ -1,52 +1,111 @@
-import React from 'react';
-import { View, Text, StyleSheet, Image, TouchableOpacity, Alert } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { View, Text, StyleSheet, Image, TouchableOpacity, ScrollView, ActivityIndicator, Alert } from 'react-native';
+import { db } from '@/services/firebaseConfig';
+import { doc, onSnapshot } from 'firebase/firestore';
+import * as Clipboard from 'expo-clipboard';
 import { Ionicons } from '@expo/vector-icons';
 
-export default function DonationScreen() {
-  const pixKey = "00.000.000/0001-00"; 
+export default function DonateScreen() {
+  const [dados, setDados] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
 
-  const copyToClipboard = () => {
-    Alert.alert("Sucesso", "Chave PIX copiada (simulação)!");
+  useEffect(() => {
+    // Escuta mudanças em tempo real
+    const unsubscribe = onSnapshot(doc(db, "configuracoes", "doacoes"), (snapshot) => {
+      if (snapshot.exists()) {
+        setDados(snapshot.data());
+      }
+      setLoading(false);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  const copiarPix = async () => {
+    if (dados?.chavePix) {
+      await Clipboard.setStringAsync(dados.chavePix);
+      Alert.alert("Copiado!", "Chave PIX copiada para a área de transferência.");
+    }
   };
 
+  if (loading) return <View style={styles.center}><ActivityIndicator size="large" color="#4a148c" /></View>;
+
   return (
-    <View style={styles.container}>
+    <ScrollView style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.title}>Dízimos e Ofertas</Text>
-        <Text style={styles.subtitle}>Contribua com a obra</Text>
+        <Text style={styles.subtitle}>Sua generosidade ajuda a manter nossa igreja e missões.</Text>
       </View>
 
-      <View style={styles.qrContainer}>
-        <Image 
-          source={{ uri: 'https://upload.wikimedia.org/wikipedia/commons/d/d0/QR_code_for_mobile_English_Wikipedia.svg' }} 
-          style={styles.qrCode} 
-        />
-        <Text style={styles.instruction}>Escaneie o QR Code ou copie a chave:</Text>
+      <View style={styles.card}>
+        <Text style={styles.cardTitle}>Dados Bancários</Text>
         
-        <TouchableOpacity style={styles.copyButton} onPress={copyToClipboard}>
-          <Text style={styles.keyText}>{pixKey}</Text>
-          <Ionicons name="copy-outline" size={20} color="#4a148c" />
-        </TouchableOpacity>
-        
-        <Text style={styles.bankInfo}>
-          Banco do Brasil{'\n'}
-          Ag: 0000-0  CC: 00000-0{'\n'}
-          IPB Calvário
-        </Text>
+        <View style={styles.infoRow}>
+          <Text style={styles.label}>Banco:</Text>
+          <Text style={styles.value}>{dados?.banco || "Não configurado"}</Text>
+        </View>
+
+        <View style={styles.infoRow}>
+          <Text style={styles.label}>Titular:</Text>
+          <Text style={styles.value}>{dados?.titular}</Text>
+        </View>
+
+        {dados?.agencia && (
+          <View style={styles.infoRow}>
+            <Text style={styles.label}>Agência:</Text>
+            <Text style={styles.value}>{dados?.agencia}</Text>
+          </View>
+        )}
+
+        {dados?.conta && (
+          <View style={styles.infoRow}>
+            <Text style={styles.label}>Conta:</Text>
+            <Text style={styles.value}>{dados?.conta}</Text>
+          </View>
+        )}
+
+        <View style={styles.pixContainer}>
+          <Text style={[styles.label, { textAlign: 'center', marginBottom: 5 }]}>Chave PIX:</Text>
+          <Text style={styles.pixKey}>{dados?.chavePix}</Text>
+          
+          <TouchableOpacity style={styles.copyBtn} onPress={copiarPix}>
+            <Ionicons name="copy-outline" size={20} color="#fff" />
+            <Text style={styles.copyBtnText}>COPIAR CHAVE PIX</Text>
+          </TouchableOpacity>
+        </View>
+
+        {dados?.qrCodeUrl ? (
+          <View style={styles.qrContainer}>
+            <Text style={styles.label}>Aponte a câmera para doar:</Text>
+            <Image 
+              source={{ uri: dados.qrCodeUrl }} 
+              style={styles.qrCode} 
+              resizeMode="contain"
+            />
+          </View>
+        ) : (
+          <Text style={styles.noQrText}>QR Code não disponível.</Text>
+        )}
       </View>
-    </View>
+    </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#4a148c' }, 
-  header: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingTop: 40 },
-  title: { fontSize: 28, fontWeight: 'bold', color: '#fff' },
-  subtitle: { color: '#e1bee7', marginTop: 5 },
-  qrContainer: { flex: 2.5, backgroundColor: '#fff', borderTopLeftRadius: 30, borderTopRightRadius: 30, padding: 30, alignItems: 'center' },
-  qrCode: { width: 200, height: 200, marginBottom: 20 },
-  instruction: { textAlign: 'center', color: '#666', marginBottom: 20 },
-  copyButton: { flexDirection: 'row', backgroundColor: '#f3e5f5', padding: 15, borderRadius: 10, width: '100%', justifyContent: 'space-between', alignItems: 'center' },
-  keyText: { fontWeight: 'bold', fontSize: 16, color: '#4a148c' },
-  bankInfo: { marginTop: 30, textAlign: 'center', color: '#888', lineHeight: 22 }
+  container: { flex: 1, backgroundColor: '#f3e5f5' },
+  center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  header: { backgroundColor: '#4a148c', padding: 30, alignItems: 'center', borderBottomLeftRadius: 30, borderBottomRightRadius: 30 },
+  title: { fontSize: 24, fontWeight: 'bold', color: '#fff' },
+  subtitle: { color: '#e1bee7', textAlign: 'center', marginTop: 10 },
+  card: { backgroundColor: '#fff', margin: 20, borderRadius: 20, padding: 20, elevation: 4 },
+  cardTitle: { fontSize: 18, fontWeight: 'bold', color: '#4a148c', marginBottom: 15, textAlign: 'center' },
+  infoRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10 },
+  label: { fontWeight: 'bold', color: '#666' },
+  value: { color: '#333' },
+  pixContainer: { marginTop: 20, padding: 15, backgroundColor: '#f3e5f5', borderRadius: 10 },
+  pixKey: { fontSize: 16, fontWeight: 'bold', color: '#4a148c', textAlign: 'center', marginBottom: 10 },
+  copyBtn: { backgroundColor: '#4a148c', flexDirection: 'row', padding: 12, borderRadius: 8, justifyContent: 'center', alignItems: 'center' },
+  copyBtnText: { color: '#fff', fontWeight: 'bold', marginLeft: 8 },
+  qrContainer: { alignItems: 'center', marginTop: 20 },
+  qrCode: { width: 200, height: 200, marginTop: 10 },
+  noQrText: { textAlign: 'center', color: '#999', marginTop: 20, fontStyle: 'italic' }
 });

@@ -20,7 +20,8 @@
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#4a148c"
       },
-      "package": "com.calvario.app"
+      "package": "com.calvario.app",
+      "googleServicesFile": "./google-services.json"
     },
     "web": {
       "bundler": "metro",
