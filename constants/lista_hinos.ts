@@ -1,7 +1,7 @@
 // LISTA COMPLETA E CORRIGIDA
 // Total: 406 hinos
 
-export  const hinos = [
+export  const LISTA_HINOS_OFFLINE = [
   {
     "id": "001",
     "numeroOrdenacao": 1,

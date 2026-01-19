@@ -5,11 +5,11 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter, useLocalSearchParams } from 'expo-router';
+import NetInfo from '@react-native-community/netinfo'; // Importando detector de internet
 
-// --- IMPORTS PARA FUNCIONAMENTO OFFLINE ---
-import { CacheService } from '@/services/CacheService';
-import { hinos as HinosLocais } from '@/app/lista_hinos'; 
-
+// --- IMPORTS DOS DADOS LOCAIS ---
+import { LISTA_HINOS_OFFLINE } from '@/constants/lista_hinos'; 
+import { BIBLIA_NVI } from '@/constants/biblia_nvi'; // Sua bíblia offline
 import { API_TOKEN } from '@/constants/churchData';
 import { LIVROS_BIBLIA, CAPITULOS_POR_LIVRO, ABREVIACOES, VERSOES_BIBLIA } from '@/constants/books';
 
@@ -18,6 +18,7 @@ export default function BibleScreen() {
   const { livroAutomatico, capituloAutomatico } = useLocalSearchParams();
 
   const [tab, setTab] = useState<'hinario' | 'biblia'>('biblia');
+  const [isOnline, setIsOnline] = useState(true); // Estado da conexão
 
   // --- BÍBLIA ---
   const [versaoSelecionada, setVersaoSelecionada] = useState('nvi');
@@ -43,7 +44,21 @@ export default function BibleScreen() {
   const [hinoLeitura, setHinoLeitura] = useState<any>(null);
   const [modalHinoVisible, setModalHinoVisible] = useState(false);
 
-  // --- Efeito Navegação da Home ---
+  // 1. MONITORAR CONEXÃO EM TEMPO REAL
+  useEffect(() => {
+    const unsubscribe = NetInfo.addEventListener(state => {
+      const conectado = !!state.isConnected && !!state.isInternetReachable;
+      setIsOnline(conectado);
+      
+      // Se cair a net, força NVI e avisa
+      if (!conectado) {
+        setVersaoSelecionada('nvi'); 
+      }
+    });
+    return () => unsubscribe();
+  }, []);
+
+  // --- EFEITOS DE NAVEGAÇÃO ---
   useEffect(() => {
     if (livroAutomatico && capituloAutomatico) {
       const livroRaw = Array.isArray(livroAutomatico) ? livroAutomatico[0] : livroAutomatico;
@@ -56,15 +71,12 @@ export default function BibleScreen() {
 
       if (capRaw) {
         const numCap = Number(capRaw);
-        if (!isNaN(numCap)) {
-          setCapitulo(numCap);
-        }
+        if (!isNaN(numCap)) setCapitulo(numCap);
       }
       router.setParams({ livroAutomatico: undefined, capituloAutomatico: undefined });
     }
   }, [livroAutomatico, capituloAutomatico]);
 
-  // Filtro Livros
   useEffect(() => {
     if (buscaLivro.trim() === '') {
       setLivrosFiltrados(LIVROS_BIBLIA);
@@ -73,67 +85,78 @@ export default function BibleScreen() {
     }
   }, [buscaLivro]);
 
-  // --- BUSCAR BÍBLIA (COM CACHE OFFLINE) ---
+  // --- 2. BUSCAR BÍBLIA (LÓGICA HÍBRIDA) ---
   const buscarBiblia = async () => {
     setLoadingBible(true);
-    try {
-      const abrev = ABREVIACOES[livroSelecionado] || 'gn';
-      
-      // Cria uma chave única para salvar este capítulo
-      const cacheKey = `biblia_${versaoSelecionada}_${abrev}_${capitulo}`;
+    const abrev = ABREVIACOES[livroSelecionado] || 'gn';
 
-      const data = await CacheService.getSmart(cacheKey, async () => {
+    try {
+      // CENÁRIO A: ONLINE (Usa API)
+      if (isOnline) {
         const url = `https://www.abibliadigital.com.br/api/verses/${versaoSelecionada}/${abrev}/${capitulo}`;
-        
         const response = await fetch(url, {
           method: 'GET',
-          headers: {
-            'Authorization': `Bearer ${API_TOKEN}`,
-            'Accept': 'application/json'
-          }
+          headers: { 'Authorization': `Bearer ${API_TOKEN}`, 'Accept': 'application/json' }
         });
 
-        if (response.status === 403) {
-          throw new Error("Erro Permissão API"); 
+        if (response.status === 403) throw new Error("Erro Permissão API");
+        
+        const data = await response.json();
+        if (data && data.verses) {
+          setVersiculos(data.verses);
+        } else {
+          setVersiculos([]);
         }
+      } 
+      // CENÁRIO B: OFFLINE (Usa Arquivo Local)
+      else {
+        // Busca direta na constante importada (biblia_nvi.ts)
+        const livroEncontrado = BIBLIA_NVI.find((l: any) => l.abbrev === abrev);
 
-        return await response.json();
-      });
-
-      if (data && data.verses) {
-        setVersiculos(data.verses);
-      } else {
-        setVersiculos([]);
-        if (!data) Alert.alert("Offline", "Conecte-se para baixar este capítulo pela primeira vez.");
+        if (livroEncontrado) {
+          const capituloIndex = capitulo - 1;
+          if (livroEncontrado.chapters[capituloIndex]) {
+            // Formata igual a API para não quebrar o layout
+            const versiculosFormatados = livroEncontrado.chapters[capituloIndex].map((texto: string, index: number) => ({
+              number: index + 1,
+              text: texto
+            }));
+            setVersiculos(versiculosFormatados);
+          } else {
+            setVersiculos([]);
+          }
+        }
       }
     } catch (error) {
       console.error(error);
       setVersiculos([]);
+      Alert.alert("Erro", "Não foi possível carregar o texto.");
     } finally {
       setLoadingBible(false);
     }
   };
 
+  // Recarrega sempre que mudar: livro, capitulo, versão ou STATUS DA INTERNET
   useEffect(() => {
-    if (tab === 'biblia') {
-      buscarBiblia();
-    }
-  }, [livroSelecionado, capitulo, versaoSelecionada, tab]);
+    if (tab === 'biblia') buscarBiblia();
+  }, [livroSelecionado, capitulo, versaoSelecionada, tab, isOnline]);
 
-  // --- CARREGAR HINÁRIO (DO ARQUIVO LOCAL) ---
+  // --- CARREGAR HINÁRIO (LOCAL) ---
   useEffect(() => {
     const carregarHinos = async () => {
       setLoadingHinos(true);
       try {
-        if (HinosLocais && HinosLocais.length > 0) {
-          const listaOrdenada = [...HinosLocais].sort((a: any, b: any) => a.numero - b.numero);
+        if (LISTA_HINOS_OFFLINE && LISTA_HINOS_OFFLINE.length > 0) {
+          const listaFormatada = LISTA_HINOS_OFFLINE.map(h => ({
+            id: h.id,
+            numero: h.numeroOrdenacao,
+            titulo: h.title,
+            letra: h.text
+          }));
+          const listaOrdenada = listaFormatada.sort((a, b) => a.numero - b.numero);
           setHinos(listaOrdenada);
           setHinosFiltrados(listaOrdenada);
-        } else {
-          console.log("Nenhum hino encontrado no arquivo local.");
         }
-      } catch (error) {
-        console.log("Erro ao carregar hinos locais:", error);
       } finally {
         setLoadingHinos(false);
       }
@@ -141,13 +164,11 @@ export default function BibleScreen() {
     carregarHinos();
   }, []);
 
-  // Filtro Hinário
   useEffect(() => {
     if (buscaHino.trim() === '') {
       setHinosFiltrados(hinos);
     } else {
       const termo = buscaHino.toLowerCase();
-
       const filtrados = hinos.filter(h =>
         h.titulo?.toLowerCase().includes(termo) ||
         h.numero?.toString().includes(termo) ||
@@ -182,10 +203,26 @@ export default function BibleScreen() {
       <View style={styles.content}>
         {tab === 'biblia' ? (
           <View style={{ flex: 1 }}>
+            
+            {/* BARRA DE STATUS OFFLINE (Opcional, mas útil) */}
+            {!isOnline && (
+              <View style={styles.offlineBanner}>
+                <Ionicons name="cloud-offline" size={14} color="#fff" />
+                <Text style={styles.offlineText}>Modo Offline (NVI)</Text>
+              </View>
+            )}
+
             <View style={styles.bibleControls}>
-              <TouchableOpacity style={styles.versionButton} onPress={() => setModalVersaoVisible(true)}>
-                <Text style={styles.versionLabel}>{versaoSelecionada.toUpperCase()}</Text>
-                <Ionicons name="chevron-down" size={12} color="#fff" />
+              {/* SELETOR DE VERSÃO: Desabilitado se estiver offline */}
+              <TouchableOpacity 
+                style={[styles.versionButton, !isOnline && { backgroundColor: '#999' }]} 
+                onPress={() => isOnline && setModalVersaoVisible(true)}
+                disabled={!isOnline}
+              >
+                <Text style={styles.versionLabel}>
+                  {isOnline ? versaoSelecionada.toUpperCase() : 'NVI'}
+                </Text>
+                {isOnline && <Ionicons name="chevron-down" size={12} color="#fff" />}
               </TouchableOpacity>
 
               <TouchableOpacity style={styles.selectorButton} onPress={() => { setBuscaLivro(''); setModalLivroVisible(true); }}>
@@ -208,7 +245,7 @@ export default function BibleScreen() {
                   versiculos.map((v, index) => <View key={index}>{renderVersiculo(v)}</View>)
                 ) : (
                   <Text style={{ textAlign: 'center', color: '#666', marginTop: 20 }}>
-                    {loadingBible ? 'Carregando...' : 'Texto indisponível offline. Conecte-se para baixar.'}
+                    Texto não encontrado.
                   </Text>
                 )}
                 <View style={{ height: 50 }} />
@@ -229,6 +266,7 @@ export default function BibleScreen() {
                 </View>
               </View>
             </Modal>
+            
             <Modal visible={modalLivroVisible} animationType="slide" transparent={true}>
               <View style={styles.modalContainer}>
                 <View style={styles.modalContent}>
@@ -242,6 +280,7 @@ export default function BibleScreen() {
                 </View>
               </View>
             </Modal>
+
             <Modal visible={modalCapituloVisible} animationType="fade" transparent={true}>
               <View style={styles.modalContainer}>
                 <View style={styles.modalContent}>
@@ -269,11 +308,7 @@ export default function BibleScreen() {
             {loadingHinos ? <ActivityIndicator size="large" color="#4a148c" style={{ marginTop: 50 }} /> : (
               <FlatList
                 data={hinosFiltrados}
-                // --- CORREÇÃO AQUI ---
-                // Usamos o índice (index) do array como chave, pois ele nunca se repete,
-                // resolvendo o problema dos IDs duplicados nos hinos 400/400A.
                 keyExtractor={(item, index) => String(index)}
-                // ---------------------
                 contentContainerStyle={{ paddingBottom: 20 }}
                 ListEmptyComponent={<Text style={{ textAlign: 'center', marginTop: 50, color: '#999' }}>Nenhum hino encontrado.</Text>}
                 renderItem={({ item }) => (
@@ -297,7 +332,6 @@ export default function BibleScreen() {
               />
             )}
 
-            {/* Modal de Leitura do Hino */}
             <Modal visible={modalHinoVisible} animationType="slide" transparent={false} presentationStyle="pageSheet">
               <SafeAreaView style={{ flex: 1, backgroundColor: '#fff' }}>
                 <View style={styles.hinoModalHeader}>
@@ -331,10 +365,13 @@ export default function BibleScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#f3e5f5' },
   content: { flex: 1, padding: 10 },
-  center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  divider: { width: 50, height: 4, backgroundColor: '#e1bee7', borderRadius: 2, marginBottom: 30 },
   header: { padding: 20, backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#e1bee7', marginTop: 30 },
   headerTitle: { fontSize: 20, fontWeight: 'bold', color: '#4a148c', textAlign: 'center' },
+  
+  // Estilo para o aviso Offline
+  offlineBanner: { backgroundColor: '#666', padding: 5, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', borderRadius: 5, marginBottom: 10 },
+  offlineText: { color: '#fff', fontSize: 12, marginLeft: 5, fontWeight: 'bold' },
+
   tabs: { flexDirection: 'row', backgroundColor: '#fff', elevation: 2 },
   tabItem: { flex: 1, padding: 15, alignItems: 'center', borderBottomWidth: 3, borderBottomColor: 'transparent' },
   activeTab: { borderBottomColor: '#7b1fa2' },
@@ -383,4 +420,6 @@ const styles = StyleSheet.create({
   gridItemActive: { backgroundColor: '#4a148c' },
   gridText: { fontSize: 16, fontWeight: 'bold', color: '#4a148c' },
   gridTextActive: { color: '#fff' },
+  divider: { width: 50, height: 4, backgroundColor: '#e1bee7', borderRadius: 2, marginBottom: 30 },
+  center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
 });

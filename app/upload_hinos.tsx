@@ -1,10 +1,10 @@
-import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, Alert, ScrollView, StyleSheet, ActivityIndicator } from 'react-native';
 import { db } from '@/services/firebaseConfig';
 import { doc, setDoc } from 'firebase/firestore';
+import React, { useState } from 'react';
+import { ActivityIndicator, Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 // Importa sua lista
-import { LISTA_HINOS_OFFLINE } from './lista_hinos'; 
+import { LISTA_HINOS_OFFLINE } from '../constants/lista_hinos';
 
 export default function UploadHinosScreen() {
   const [log, setLog] = useState<string[]>([]);
