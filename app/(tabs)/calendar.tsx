@@ -1,12 +1,16 @@
-import React, { useEffect, useState, useMemo } from 'react';
-import { View, Text, StyleSheet, FlatList, ActivityIndicator, TouchableOpacity, Alert } from 'react-native';
+import React, { useEffect, useState, useMemo, useCallback } from 'react';
+import { View, Text, StyleSheet, FlatList, ActivityIndicator, TouchableOpacity, Alert, RefreshControl } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { db } from '@/services/firebaseConfig';
-import { collection, query, orderBy, onSnapshot, doc, deleteDoc } from 'firebase/firestore'; // Adicionado doc e deleteDoc
+// Trocamos onSnapshot por getDocs para usar com o CacheService
+import { collection, query, orderBy, getDocs, doc, deleteDoc } from 'firebase/firestore'; 
 import { Calendar, LocaleConfig } from 'react-native-calendars';
 import { format } from 'date-fns';
-import { useAdmin } from '@/context/AdminContext'; // Importado context de admin
-import { useRouter } from 'expo-router'; // Importado router para edição
+import { useAdmin } from '@/context/AdminContext';
+import { useRouter } from 'expo-router';
+
+// Import do Serviço de Cache
+import { CacheService } from '@/services/CacheService';
 
 // Configuração do calendário para Português
 LocaleConfig.locales['pt-br'] = {
@@ -22,9 +26,9 @@ LocaleConfig.defaultLocale = 'pt-br';
 interface Evento {
   id: string;
   titulo: string;
-  data: string;       // Formato texto vindo do admin (ex: "25/01")
+  data: string;
   descricao: string;
-  dataISO: string;    // Gerado automaticamente para o calendário (YYYY-MM-DD)
+  dataISO: string;
   criadoEm: any;
   horaInicio: string; 
   horaFim: string;
@@ -32,12 +36,62 @@ interface Evento {
 
 export default function CalendarScreen() {
   const router = useRouter();
-  const { isAdmin } = useAdmin(); // Puxa o estado de administrador
+  const { isAdmin } = useAdmin();
 
   const [eventos, setEventos] = useState<Evento[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selectedDate, setSelectedDate] = useState<string>(''); // Data clicada
-  const [currentMonth, setCurrentMonth] = useState(format(new Date(), 'yyyy-MM')); // Mês visível
+  const [refreshing, setRefreshing] = useState(false); // Novo estado para o pull-to-refresh
+  const [selectedDate, setSelectedDate] = useState<string>('');
+  const [currentMonth, setCurrentMonth] = useState(format(new Date(), 'yyyy-MM'));
+
+  // --- FUNÇÃO DE CARGA COM CACHE ---
+  const carregarEventos = async () => {
+    // Só exibe o loading de tela cheia se não for um refresh manual
+    if (!refreshing) setLoading(true);
+
+    try {
+      // Busca Inteligente: Tenta Online (e salva) > Falha > Usa Offline
+      const dados = await CacheService.getSmart('agenda_eventos', async () => {
+        const q = query(collection(db, "eventos"), orderBy("criadoEm", "desc"));
+        const snapshot = await getDocs(q);
+        
+        // Mapeia os dados dentro do fetcher para salvar limpo no cache
+        return snapshot.docs.map((doc) => {
+          const dataDoc = doc.data();
+          return {
+            id: doc.id,
+            titulo: dataDoc.titulo,
+            descricao: dataDoc.descricao,
+            data: dataDoc.data,
+            dataISO: dataDoc.dataISO,
+            horaInicio: dataDoc.horaInicio,
+            horaFim: dataDoc.horaFim,
+            criadoEm: dataDoc.criadoEm
+          } as Evento;
+        });
+      });
+
+      if (dados) {
+        setEventos(dados);
+      }
+    } catch (error) {
+      console.log("Erro ao carregar eventos:", error);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  };
+
+  // Carrega ao iniciar
+  useEffect(() => {
+    carregarEventos();
+  }, []);
+
+  // Função para o Pull-to-Refresh
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
+    carregarEventos();
+  }, []);
 
   // --- FUNÇÕES DE ADMIN ---
 
@@ -53,6 +107,8 @@ export default function CalendarScreen() {
           onPress: async () => {
             try {
               await deleteDoc(doc(db, "eventos", id));
+              // Após excluir, recarrega a lista para atualizar o cache e a UI
+              carregarEventos();
             } catch (error) {
               Alert.alert("Erro", "Não foi possível excluir o evento.");
             }
@@ -62,7 +118,6 @@ export default function CalendarScreen() {
     );
   };
 
-  // 1. Tenta converter o texto do admin "DD/MM" em "YYYY-MM-DD"
   const extrairDataParaCalendario = (textoData: string) => {
     try {
       const match = textoData.match(/(\d{1,2})\/(\d{1,2})/);
@@ -76,37 +131,11 @@ export default function CalendarScreen() {
     return undefined;
   };
 
-  // 2. Busca eventos no Firebase
-  useEffect(() => {
-    const q = query(collection(db, "eventos"), orderBy("criadoEm", "desc"));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const lista: Evento[] = [];
-      snapshot.forEach((doc) => {
-        const dataDoc = doc.data();
-        lista.push({
-          id: doc.id,
-          titulo: dataDoc.titulo,
-          descricao: dataDoc.descricao,
-          data: dataDoc.data,
-          dataISO: dataDoc.dataISO, // Puxa direto do Firebase
-          horaInicio: dataDoc.horaInicio, // Puxa direto do Firebase
-          horaFim: dataDoc.horaFim,       // Puxa direto do Firebase
-          criadoEm: dataDoc.criadoEm
-        } as Evento);
-      });
-      setEventos(lista);
-      setLoading(false);
-    });
-    return () => unsubscribe();
-  }, []);
-
   // 3. Filtragem Inteligente (Mês ou Dia)
   const eventosFiltrados = useMemo(() => {
     if (selectedDate) {
-      // Se clicou num dia, filtra apenas por esse dia
       return eventos.filter(e => e.dataISO === selectedDate);
     } else {
-      // Se não, filtra todos os eventos do mês atual visível
       return eventos.filter(e => e.dataISO?.startsWith(currentMonth));
     }
   }, [selectedDate, currentMonth, eventos]);
@@ -131,7 +160,7 @@ export default function CalendarScreen() {
     return marks;
   }, [eventos, selectedDate]);
 
-  if (loading) return <ActivityIndicator size="large" color="#4a148c" style={{ flex: 1 }} />;
+  if (loading && !refreshing) return <ActivityIndicator size="large" color="#4a148c" style={{ flex: 1 }} />;
 
   return (
     <View style={styles.container}>
@@ -141,7 +170,7 @@ export default function CalendarScreen() {
         onDayPress={(day: any) => setSelectedDate(day.dateString)}
         onMonthChange={(month: any) => {
           setCurrentMonth(month.dateString.substring(0, 7));
-          setSelectedDate(''); // Limpa filtro ao mudar mês
+          setSelectedDate(''); 
         }}
         markedDates={markedDates}
         theme={{
@@ -171,6 +200,10 @@ export default function CalendarScreen() {
         data={eventosFiltrados}
         keyExtractor={item => item.id}
         contentContainerStyle={{ padding: 15 }}
+        // Adicionado o controle de atualização manual
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={['#4a148c']} />
+        }
         ListEmptyComponent={
           <Text style={styles.emptyText}>Nenhum evento para este período.</Text>
         }

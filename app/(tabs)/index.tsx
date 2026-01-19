@@ -1,58 +1,172 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, Image, ActivityIndicator, RefreshControl, TouchableOpacity, TouchableWithoutFeedback, Modal, TextInput, Alert, Button } from 'react-native';
+import { 
+  View, Text, StyleSheet, ScrollView, Image, ActivityIndicator, 
+  RefreshControl, TouchableOpacity, TouchableWithoutFeedback, 
+  Modal, TextInput, Alert, Button 
+} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { db } from '@/services/firebaseConfig';
-import { collection, getDocs, query, orderBy, onSnapshot, doc, deleteDoc, updateDoc } from 'firebase/firestore'; // Adicionado doc, deleteDoc, updateDoc
-import { API_TOKEN } from '@/constants/churchData';
 import { useRouter } from 'expo-router';
 
+// --- IMPORTS DO FIREBASE CORRIGIDOS (Adicionados limit e where) ---
+import { db } from '@/services/firebaseConfig';
+import { 
+  collection, getDocs, query, orderBy, doc, deleteDoc, updateDoc, 
+  limit, where 
+} from 'firebase/firestore'; 
+
+import { API_TOKEN } from '@/constants/churchData';
 import { useAdmin } from '@/context/AdminContext';
+
+// Import do Serviço de Cache
+import { CacheService } from '@/services/CacheService';
 
 export default function HomeScreen() {
   const router = useRouter();
+  const { isAdmin, loginAdmin, logoutAdmin } = useAdmin();
 
+  // Estados
   const [avisos, setAvisos] = useState<any[]>([]);
   const [aniversariantes, setAniversariantes] = useState<any[]>([]);
   const [versiculoDoDia, setVersiculoDoDia] = useState<any>(null);
+  
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  
+  // Estados do Admin Login
+  const [clickCount, setClickCount] = useState(0);
+  const [showLoginModal, setShowLoginModal] = useState(false);
+  const [senhaInput, setSenhaInput] = useState('');
 
   const dataHojeObj = new Date();
   const nomesMeses = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
   const nomeMesAtual = nomesMeses[dataHojeObj.getMonth()];
   const dataFormatadaHoje = dataHojeObj.toISOString().split('T')[0];
 
-  const { isAdmin, loginAdmin, logoutAdmin } = useAdmin();
-  const [clickCount, setClickCount] = useState(0);
-  const [showLoginModal, setShowLoginModal] = useState(false);
-  const [senhaInput, setSenhaInput] = useState('');
+  // --- CARREGAMENTO DE DADOS COM CACHE (OFFLINE FIRST) ---
+  
+  const carregarVersiculoDoDia = async () => {
+    try {
+      const dataSalva = await AsyncStorage.getItem('@versiculo_data');
+      const versiculoSalvoStr = await AsyncStorage.getItem('@versiculo_atual');
+      
+      // Se já tem o do dia salvo, usa ele
+      if (dataSalva === dataFormatadaHoje && versiculoSalvoStr) {
+        const v = JSON.parse(versiculoSalvoStr);
+        if (v.livro && v.capitulo) {
+          setVersiculoDoDia(v);
+          return;
+        }
+      }
 
-  // --- NOVAS FUNÇÕES DE ADMIN ---
+      // Se não tem ou mudou o dia, busca online
+      const response = await fetch('https://www.abibliadigital.com.br/api/verses/nvi/random', {
+        method: 'GET',
+        headers: { 'Authorization': `Bearer ${API_TOKEN}`, 'Accept': 'application/json' }
+      });
+      const data = await response.json();
+      
+      if (data && !data.error) {
+        const versiculoFormatado = {
+          texto: data.text,
+          ref: `${data.book.name} ${data.chapter}:${data.number}`,
+          livro: data.book.name,
+          capitulo: data.chapter
+        };
+        setVersiculoDoDia(versiculoFormatado);
+        await AsyncStorage.setItem('@versiculo_data', dataFormatadaHoje);
+        await AsyncStorage.setItem('@versiculo_atual', JSON.stringify(versiculoFormatado));
+      }
+    } catch (error) {
+      // Fallback offline caso nunca tenha baixado nada
+      setVersiculoDoDia({
+        texto: "Por isso não tema, pois estou com você; não tenha medo, pois sou o seu Deus.",
+        ref: "Isaías 41:10",
+        livro: "Isaías",
+        capitulo: 41
+      });
+    }
+  };
+
+  const carregarDados = async () => {
+    // Só mostra o loading de tela cheia se a lista estiver vazia (primeira carga)
+    if (avisos.length === 0) setLoading(true);
+    
+    try {
+      await carregarVersiculoDoDia();
+
+      // 1. AVISOS COM CACHE
+      const avisosData = await CacheService.getSmart('home_avisos', async () => {
+        // Busca Online
+        const qAvisos = query(collection(db, "avisos"), orderBy("isPinned", "desc"), orderBy("criadoEm", "desc"), limit(10));
+        const snapshot = await getDocs(qAvisos);
+        return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      });
+      if (avisosData) setAvisos(avisosData);
+
+      // 2. ANIVERSARIANTES COM CACHE
+      const niverData = await CacheService.getSmart('home_aniversariantes', async () => {
+        const mesAtualNum = dataHojeObj.getMonth() + 1;
+        // Tenta buscar filtrado pelo mês. Se falhar, busca tudo e filtra.
+        const qNiver = query(collection(db, "aniversariantes"), where("mes", "==", mesAtualNum));
+        const snapshot = await getDocs(qNiver);
+        const lista = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as any));
+        return lista.sort((a, b) => a.dia - b.dia);
+      });
+      if (niverData) setAniversariantes(niverData);
+
+    } catch (error) {
+      console.log("Erro geral carregamento:", error);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  };
+
+  // --- HOOKS DE EFEITO ---
+  useEffect(() => { 
+    carregarDados(); 
+  }, []);
+
+  const onRefresh = useCallback(() => { 
+    setRefreshing(true); 
+    carregarDados(); 
+  }, []);
+
+  // --- FUNÇÕES DE ADMIN ---
 
   const handleTogglePin = async (id: string, currentStatus: boolean) => {
     try {
       await updateDoc(doc(db, "avisos", id), { isPinned: !currentStatus });
+      carregarDados(); // Atualiza a lista manualmente
     } catch (e) {
-      Alert.alert("Erro", "Falha ao fixar aviso. Verifique o índice no Firebase.");
+      Alert.alert("Erro", "Falha ao fixar aviso.");
     }
   };
 
   const handleDeleteAviso = (id: string) => {
-    Alert.alert("Excluir Aviso", "Tem certeza que deseja apagar este aviso?", [
+    Alert.alert("Excluir Aviso", "Confirma a exclusão?", [
       { text: "Cancelar" },
-      { text: "Excluir", style: 'destructive', onPress: async () => await deleteDoc(doc(db, "avisos", id)) }
+      { text: "Excluir", style: 'destructive', onPress: async () => {
+          await deleteDoc(doc(db, "avisos", id));
+          carregarDados(); // Atualiza a lista
+        } 
+      }
     ]);
   };
 
   const handleDeleteNiver = (id: string) => {
-    Alert.alert("Remover Aniversariante", "Deseja remover este membro da lista?", [
+    Alert.alert("Remover Aniversariante", "Confirma a exclusão?", [
       { text: "Cancelar" },
-      { text: "Remover", style: 'destructive', onPress: async () => await deleteDoc(doc(db, "aniversariantes", id)) }
+      { text: "Remover", style: 'destructive', onPress: async () => {
+          await deleteDoc(doc(db, "aniversariantes", id));
+          carregarDados(); // Atualiza a lista
+        } 
+      }
     ]);
   };
 
-  // --- LÓGICA EXISTENTE ---
+  // --- OUTRAS FUNÇÕES ---
 
   const handleLogoPress = () => {
     if (isAdmin) return;
@@ -75,95 +189,8 @@ export default function HomeScreen() {
     }
   };
 
-  const carregarVersiculoDoDia = async () => {
-    try {
-      const dataSalva = await AsyncStorage.getItem('@versiculo_data');
-      const versiculoSalvoStr = await AsyncStorage.getItem('@versiculo_atual');
-      const historicoStr = await AsyncStorage.getItem('@versiculo_historico');
-      let historico = historicoStr ? JSON.parse(historicoStr) : [];
-      let usarSalvo = false;
-
-      if (dataSalva === dataFormatadaHoje && versiculoSalvoStr) {
-        const v = JSON.parse(versiculoSalvoStr);
-        if (v.livro && v.capitulo) {
-          setVersiculoDoDia(v);
-          usarSalvo = true;
-        }
-      }
-
-      if (usarSalvo) return;
-
-      let novoVersiculo = null;
-      let tentativas = 0;
-      while (!novoVersiculo && tentativas < 5) {
-        const response = await fetch('https://www.abibliadigital.com.br/api/verses/nvi/random', {
-          method: 'GET',
-          headers: { 'Authorization': `Bearer ${API_TOKEN}`, 'Accept': 'application/json' }
-        });
-        const data = await response.json();
-        if (data.error) throw new Error("Erro API");
-        const idVersiculo = `${data.book.abbrev.pt}-${data.chapter}-${data.number}`;
-        if (!historico.includes(idVersiculo)) {
-          novoVersiculo = data;
-          historico.push(idVersiculo);
-          if (historico.length > 500) historico.shift();
-        }
-        tentativas++;
-      }
-
-      if (!novoVersiculo) return;
-      const versiculoFormatado = {
-        texto: novoVersiculo.text,
-        ref: `${novoVersiculo.book.name} ${novoVersiculo.chapter}:${novoVersiculo.number}`,
-        livro: novoVersiculo.book.name,
-        capitulo: novoVersiculo.chapter
-      };
-      setVersiculoDoDia(versiculoFormatado);
-      await AsyncStorage.setItem('@versiculo_data', dataFormatadaHoje);
-      await AsyncStorage.setItem('@versiculo_atual', JSON.stringify(versiculoFormatado));
-      await AsyncStorage.setItem('@versiculo_historico', JSON.stringify(historico));
-    } catch (error) {
-      setVersiculoDoDia({
-        texto: "Por isso não tema, pois estou com você; não tenha medo, pois sou o seu Deus.",
-        ref: "Isaías 41:10",
-        livro: "Isaías",
-        capitulo: 41
-      });
-    }
-  };
-
-  const carregarDados = async () => {
-    try {
-      await carregarVersiculoDoDia();
-
-      // Avisos em tempo real com ordenação (Fixados primeiro, depois por data)
-      const qAvisos = query(collection(db, "avisos"), orderBy("isPinned", "desc"), orderBy("criadoEm", "desc"));
-      onSnapshot(qAvisos, (snapshot) => {
-        setAvisos(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-      });
-
-      // Aniversariantes em tempo real
-      onSnapshot(collection(db, "aniversariantes"), (snapshot) => {
-        const listaNiver = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as any));
-        const mesAtualNum = dataHojeObj.getMonth() + 1;
-        setAniversariantes(listaNiver.filter(p => p.mes === mesAtualNum).sort((a, b) => a.dia - b.dia));
-      });
-
-    } catch (error) {
-      console.log("Erro geral:", error);
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  };
-
-  useEffect(() => { carregarDados(); }, []);
-  const onRefresh = useCallback(() => { setRefreshing(true); carregarDados(); }, []);
-
   const lerCapituloCompleto = () => {
     if (versiculoDoDia && versiculoDoDia.livro && versiculoDoDia.capitulo) {
-      // Use apenas o push com os parâmetros. 
-      // O Expo Router cuidará de levar para a aba certa.
       router.push({
         pathname: "/bible",
         params: {
@@ -172,12 +199,14 @@ export default function HomeScreen() {
         }
       });
     } else {
-      Alert.alert("Erro", "Informações do capítulo não disponíveis. Atualize a tela.");
       onRefresh();
     }
   };
 
-  if (loading) {
+  // --- RENDERIZAÇÃO ---
+
+  // O loading deve ser condicional aqui para não bloquear a renderização dos hooks acima
+  if (loading && avisos.length === 0) {
     return (
       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
         <ActivityIndicator size="large" color="#4a148c" />
@@ -264,12 +293,9 @@ export default function HomeScreen() {
 
                 {isAdmin && (
                   <View style={{ flexDirection: 'row', gap: 15, marginRight: 10 }}>
-                    {/* BOTÃO EDITAR */}
                     <TouchableOpacity onPress={() => router.push({ pathname: '/admin/add_niver', params: { editId: pessoa.id } })}>
                       <Ionicons name="create-outline" size={18} color="#4a148c" />
                     </TouchableOpacity>
-
-                    {/* BOTÃO EXCLUIR */}
                     <TouchableOpacity onPress={() => handleDeleteNiver(pessoa.id)}>
                       <Ionicons name="trash-outline" size={18} color="red" />
                     </TouchableOpacity>

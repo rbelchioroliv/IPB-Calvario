@@ -6,9 +6,11 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 
+// --- IMPORTS PARA FUNCIONAMENTO OFFLINE ---
+import { CacheService } from '@/services/CacheService';
+import { hinos as HinosLocais } from '@/app/lista_hinos'; 
+
 import { API_TOKEN } from '@/constants/churchData';
-import { db } from '@/services/firebaseConfig';
-import { collection, getDocs, query, orderBy } from 'firebase/firestore';
 import { LIVROS_BIBLIA, CAPITULOS_POR_LIVRO, ABREVIACOES, VERSOES_BIBLIA } from '@/constants/books';
 
 export default function BibleScreen() {
@@ -41,16 +43,15 @@ export default function BibleScreen() {
   const [hinoLeitura, setHinoLeitura] = useState<any>(null);
   const [modalHinoVisible, setModalHinoVisible] = useState(false);
 
-  // --- CORREÇÃO: Efeito Navegação da Home (Resolvendo Erro 2345 e Bug do Hinário) ---
+  // --- Efeito Navegação da Home ---
   useEffect(() => {
     if (livroAutomatico && capituloAutomatico) {
-      // Extração segura para TypeScript
       const livroRaw = Array.isArray(livroAutomatico) ? livroAutomatico[0] : livroAutomatico;
       const capRaw = Array.isArray(capituloAutomatico) ? capituloAutomatico[0] : capituloAutomatico;
 
       if (typeof livroRaw === 'string') {
         setLivroSelecionado(livroRaw);
-        setTab('biblia'); // Força a aba Bíblia para não bugar a navegação do Hinário
+        setTab('biblia'); 
       }
 
       if (capRaw) {
@@ -59,8 +60,6 @@ export default function BibleScreen() {
           setCapitulo(numCap);
         }
       }
-
-      // Limpa os parâmetros da URL
       router.setParams({ livroAutomatico: undefined, capituloAutomatico: undefined });
     }
   }, [livroAutomatico, capituloAutomatico]);
@@ -74,36 +73,42 @@ export default function BibleScreen() {
     }
   }, [buscaLivro]);
 
-  // Buscar API Bíblia
+  // --- BUSCAR BÍBLIA (COM CACHE OFFLINE) ---
   const buscarBiblia = async () => {
     setLoadingBible(true);
     try {
       const abrev = ABREVIACOES[livroSelecionado] || 'gn';
-      const url = `https://www.abibliadigital.com.br/api/verses/${versaoSelecionada}/${abrev}/${capitulo}`;
+      
+      // Cria uma chave única para salvar este capítulo
+      const cacheKey = `biblia_${versaoSelecionada}_${abrev}_${capitulo}`;
 
-      const response = await fetch(url, {
-        method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${API_TOKEN}`,
-          'Accept': 'application/json'
+      const data = await CacheService.getSmart(cacheKey, async () => {
+        const url = `https://www.abibliadigital.com.br/api/verses/${versaoSelecionada}/${abrev}/${capitulo}`;
+        
+        const response = await fetch(url, {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${API_TOKEN}`,
+            'Accept': 'application/json'
+          }
+        });
+
+        if (response.status === 403) {
+          throw new Error("Erro Permissão API"); 
         }
+
+        return await response.json();
       });
 
-      if (response.status === 403) {
-        Alert.alert("Erro de Permissão", "Verifique o Token ou use a versão ACF.");
-        setVersiculos([]);
-        return;
-      }
-
-      const data = await response.json();
-      if (!data || !data.verses) {
-        setVersiculos([]);
-      } else {
+      if (data && data.verses) {
         setVersiculos(data.verses);
+      } else {
+        setVersiculos([]);
+        if (!data) Alert.alert("Offline", "Conecte-se para baixar este capítulo pela primeira vez.");
       }
     } catch (error) {
       console.error(error);
-      Alert.alert("Erro", "Falha na conexão.");
+      setVersiculos([]);
     } finally {
       setLoadingBible(false);
     }
@@ -115,18 +120,20 @@ export default function BibleScreen() {
     }
   }, [livroSelecionado, capitulo, versaoSelecionada, tab]);
 
-  // Carregar Hinário do Firebase
+  // --- CARREGAR HINÁRIO (DO ARQUIVO LOCAL) ---
   useEffect(() => {
     const carregarHinos = async () => {
       setLoadingHinos(true);
       try {
-        const q = query(collection(db, "hinos"), orderBy("numero"));
-        const snapshot = await getDocs(q);
-        const lista = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        setHinos(lista);
-        setHinosFiltrados(lista);
+        if (HinosLocais && HinosLocais.length > 0) {
+          const listaOrdenada = [...HinosLocais].sort((a: any, b: any) => a.numero - b.numero);
+          setHinos(listaOrdenada);
+          setHinosFiltrados(listaOrdenada);
+        } else {
+          console.log("Nenhum hino encontrado no arquivo local.");
+        }
       } catch (error) {
-        console.log("Erro hinos:", error);
+        console.log("Erro ao carregar hinos locais:", error);
       } finally {
         setLoadingHinos(false);
       }
@@ -200,7 +207,9 @@ export default function BibleScreen() {
                 {versiculos.length > 0 ? (
                   versiculos.map((v, index) => <View key={index}>{renderVersiculo(v)}</View>)
                 ) : (
-                  <Text style={{ textAlign: 'center', color: '#666', marginTop: 20 }}>Selecione um texto para ler.</Text>
+                  <Text style={{ textAlign: 'center', color: '#666', marginTop: 20 }}>
+                    {loadingBible ? 'Carregando...' : 'Texto indisponível offline. Conecte-se para baixar.'}
+                  </Text>
                 )}
                 <View style={{ height: 50 }} />
               </ScrollView>
@@ -260,7 +269,11 @@ export default function BibleScreen() {
             {loadingHinos ? <ActivityIndicator size="large" color="#4a148c" style={{ marginTop: 50 }} /> : (
               <FlatList
                 data={hinosFiltrados}
-                keyExtractor={item => item.id || Math.random().toString()}
+                // --- CORREÇÃO AQUI ---
+                // Usamos o índice (index) do array como chave, pois ele nunca se repete,
+                // resolvendo o problema dos IDs duplicados nos hinos 400/400A.
+                keyExtractor={(item, index) => String(index)}
+                // ---------------------
                 contentContainerStyle={{ paddingBottom: 20 }}
                 ListEmptyComponent={<Text style={{ textAlign: 'center', marginTop: 50, color: '#999' }}>Nenhum hino encontrado.</Text>}
                 renderItem={({ item }) => (
@@ -316,364 +329,58 @@ export default function BibleScreen() {
 }
 
 const styles = StyleSheet.create({
-  
-  // ESTRUTURA E LAYOUT GERAL
- 
-  container: {
-    flex: 1,
-    backgroundColor: '#f3e5f5',
-  },
-  content: {
-    flex: 1,
-    padding: 10,
-  },
-  center: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  divider: {
-    width: 50,
-    height: 4,
-    backgroundColor: '#e1bee7',
-    borderRadius: 2,
-    marginBottom: 30,
-  },
-
-  
-  // CABEÇALHO (HEADER PRINCIPAL)
- 
-  header: {
-    padding: 20,
-    backgroundColor: '#fff',
-    borderBottomWidth: 1,
-    borderBottomColor: '#e1bee7',
-    marginTop: 30,
-  },
-  headerTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#4a148c',
-    textAlign: 'center',
-  },
-
-
-  // ABAS DE NAVEGAÇÃO (TABS)
- 
-  tabs: {
-    flexDirection: 'row',
-    backgroundColor: '#fff',
-    elevation: 2,
-  },
-  tabItem: {
-    flex: 1,
-    padding: 15,
-    alignItems: 'center',
-    borderBottomWidth: 3,
-    borderBottomColor: 'transparent',
-  },
-  activeTab: {
-    borderBottomColor: '#7b1fa2',
-  },
-  tabText: {
-    fontWeight: 'bold',
-    color: '#999',
-  },
-  activeTabText: {
-    color: '#7b1fa2',
-  },
-
- 
-  //  CAMPOS DE BUSCA (INPUTS)
-  
-  searchBox: {
-    flexDirection: 'row',
-    backgroundColor: '#fff',
-    borderRadius: 10,
-    padding: 10,
-    alignItems: 'center',
-    marginBottom: 15,
-    elevation: 1,
-  },
-  searchBoxModal: {
-    flexDirection: 'row',
-    backgroundColor: '#f0f0f0',
-    borderRadius: 10,
-    padding: 10,
-    alignItems: 'center',
-    marginBottom: 15,
-  },
-  searchInput: {
-    flex: 1,
-    marginLeft: 10,
-    fontSize: 16,
-    color: '#333',
-  },
-
- 
-  // BÍBLIA: CONTROLES E SELETORES
-  
-  bibleControls: {
-    flexDirection: 'row',
-    marginBottom: 10,
-    alignItems: 'center',
-  },
-  versionButton: {
-    backgroundColor: '#4a148c',
-    paddingHorizontal: 15,
-    paddingVertical: 12,
-    borderRadius: 8,
-    marginRight: 8,
-    flexDirection: 'row',
-    alignItems: 'center',
-    elevation: 2,
-  },
-  versionLabel: {
-    color: '#fff',
-    fontWeight: 'bold',
-    fontSize: 14,
-    marginRight: 5,
-  },
-  selectorButton: {
-    flex: 1,
-    marginRight: 8,
-    backgroundColor: '#fff',
-    padding: 8,
-    borderRadius: 8,
-    elevation: 1,
-    justifyContent: 'center',
-  },
-  selectorLabel: {
-    fontSize: 10,
-    color: '#888',
-    marginBottom: 2,
-  },
-  selectorValue: {
-    fontSize: 14,
-    fontWeight: 'bold',
-    color: '#4a148c',
-  },
-
-  
-  // BÍBLIA: LEITOR DE TEXTO
-
-  bibleTextContainer: {
-    flex: 1,
-    backgroundColor: '#fff',
-    borderRadius: 10,
-    padding: 15,
-    elevation: 2,
-  },
-  bibleTitle: {
-    fontSize: 22,
-    fontWeight: 'bold',
-    color: '#4a148c',
-    marginBottom: 20,
-    textAlign: 'center',
-    borderBottomWidth: 1,
-    borderBottomColor: '#eee',
-    paddingBottom: 10,
-  },
-  verseContainer: {
-    flexDirection: 'row',
-    marginBottom: 12,
-  },
-  verseNumber: {
-    fontSize: 12,
-    fontWeight: 'bold',
-    color: '#7b1fa2',
-    width: 25,
-    marginTop: 4,
-    textAlign: 'right',
-    marginRight: 8,
-  },
-  verseText: {
-    fontSize: 18,
-    lineHeight: 28,
-    color: '#333',
-    flex: 1,
-    textAlign: 'justify',
-  },
-
- 
-  //  HINÁRIO: LISTA DE HINOS
-
-  hinoItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#fff',
-    padding: 15,
-    marginBottom: 10,
-    borderRadius: 12,
-    elevation: 1,
-  },
-  hinoNumberCircle: {
-    width: 45,
-    height: 45,
-    borderRadius: 25,
-    backgroundColor: '#f3e5f5',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 15,
-  },
-  hinoNumber: {
-    fontWeight: 'bold',
-    color: '#4a148c',
-    fontSize: 16,
-  },
-  hinoTitle: {
-    fontWeight: 'bold',
-    fontSize: 16,
-    color: '#4a148c',
-    marginBottom: 4,
-  },
-  hinoPreview: {
-    color: '#666',
-    fontSize: 14,
-  },
-
-
-  // HINÁRIO: MODAL DE LEITURA
- 
-  hinoModalHeader: {
-    padding: 20,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    borderBottomWidth: 1,
-    borderBottomColor: '#eee',
-  },
-  hinoModalHeaderTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#666',
-  },
-  backButton: {
-    padding: 5,
-  },
-  hinoModalContent: {
-    padding: 30,
-    alignItems: 'center',
-  },
-  hinoBadge: {
-    backgroundColor: '#4a148c',
-    paddingHorizontal: 20,
-    paddingVertical: 8,
-    borderRadius: 20,
-    marginBottom: 20,
-  },
-  hinoBadgeText: {
-    color: '#fff',
-    fontWeight: 'bold',
-    fontSize: 16,
-  },
-  hinoFullTitle: {
-    fontSize: 26,
-    fontWeight: 'bold',
-    color: '#333',
-    textAlign: 'center',
-    marginBottom: 10,
-  },
-  hinoFullLyrics: {
-    fontSize: 20,
-    color: '#333',
-    lineHeight: 34,
-    textAlign: 'center',
-  },
-
-
-  // MODAIS: CONFIGURAÇÃO E COMPONENTES
- 
-  modalContainer: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  modalContent: {
-    width: '90%',
-    height: '80%',
-    backgroundColor: '#fff',
-    borderRadius: 15,
-    padding: 20,
-  },
-  modalContentSmall: {
-    width: '80%',
-    backgroundColor: '#fff',
-    borderRadius: 15,
-    padding: 20,
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 15,
-  },
-  modalTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#4a148c',
-    textAlign: 'center',
-    marginBottom: 10,
-  },
-  modalItem: {
-    paddingVertical: 15,
-    borderBottomWidth: 1,
-    borderBottomColor: '#f0f0f0',
-  },
-  modalItemText: {
-    fontSize: 18,
-    color: '#333',
-  },
-  versionItem: {
-    paddingVertical: 15,
-    borderBottomWidth: 1,
-    borderBottomColor: '#eee',
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  versionItemText: {
-    fontSize: 16,
-    color: '#333',
-  },
-  closeButton: {
-    marginTop: 15,
-    padding: 12,
-    backgroundColor: '#eee',
-    borderRadius: 8,
-    alignItems: 'center',
-  },
-  closeButtonText: {
-    fontWeight: 'bold',
-    color: '#333',
-  },
-
-  
-  // SELEÇÃO DE CAPÍTULOS (GRADE)
- 
-  gridContainer: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'center',
-  },
-  gridItem: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    backgroundColor: '#f3e5f5',
-    justifyContent: 'center',
-    alignItems: 'center',
-    margin: 6,
-  },
-  gridItemActive: {
-    backgroundColor: '#4a148c',
-  },
-  gridText: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#4a148c',
-  },
-  gridTextActive: {
-    color: '#fff',
-  },
+  container: { flex: 1, backgroundColor: '#f3e5f5' },
+  content: { flex: 1, padding: 10 },
+  center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  divider: { width: 50, height: 4, backgroundColor: '#e1bee7', borderRadius: 2, marginBottom: 30 },
+  header: { padding: 20, backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#e1bee7', marginTop: 30 },
+  headerTitle: { fontSize: 20, fontWeight: 'bold', color: '#4a148c', textAlign: 'center' },
+  tabs: { flexDirection: 'row', backgroundColor: '#fff', elevation: 2 },
+  tabItem: { flex: 1, padding: 15, alignItems: 'center', borderBottomWidth: 3, borderBottomColor: 'transparent' },
+  activeTab: { borderBottomColor: '#7b1fa2' },
+  tabText: { fontWeight: 'bold', color: '#999' },
+  activeTabText: { color: '#7b1fa2' },
+  searchBox: { flexDirection: 'row', backgroundColor: '#fff', borderRadius: 10, padding: 10, alignItems: 'center', marginBottom: 15, elevation: 1 },
+  searchBoxModal: { flexDirection: 'row', backgroundColor: '#f0f0f0', borderRadius: 10, padding: 10, alignItems: 'center', marginBottom: 15 },
+  searchInput: { flex: 1, marginLeft: 10, fontSize: 16, color: '#333' },
+  bibleControls: { flexDirection: 'row', marginBottom: 10, alignItems: 'center' },
+  versionButton: { backgroundColor: '#4a148c', paddingHorizontal: 15, paddingVertical: 12, borderRadius: 8, marginRight: 8, flexDirection: 'row', alignItems: 'center', elevation: 2 },
+  versionLabel: { color: '#fff', fontWeight: 'bold', fontSize: 14, marginRight: 5 },
+  selectorButton: { flex: 1, marginRight: 8, backgroundColor: '#fff', padding: 8, borderRadius: 8, elevation: 1, justifyContent: 'center' },
+  selectorLabel: { fontSize: 10, color: '#888', marginBottom: 2 },
+  selectorValue: { fontSize: 14, fontWeight: 'bold', color: '#4a148c' },
+  bibleTextContainer: { flex: 1, backgroundColor: '#fff', borderRadius: 10, padding: 15, elevation: 2 },
+  bibleTitle: { fontSize: 22, fontWeight: 'bold', color: '#4a148c', marginBottom: 20, textAlign: 'center', borderBottomWidth: 1, borderBottomColor: '#eee', paddingBottom: 10 },
+  verseContainer: { flexDirection: 'row', marginBottom: 12 },
+  verseNumber: { fontSize: 12, fontWeight: 'bold', color: '#7b1fa2', width: 25, marginTop: 4, textAlign: 'right', marginRight: 8 },
+  verseText: { fontSize: 18, lineHeight: 28, color: '#333', flex: 1, textAlign: 'justify' },
+  hinoItem: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', padding: 15, marginBottom: 10, borderRadius: 12, elevation: 1 },
+  hinoNumberCircle: { width: 45, height: 45, borderRadius: 25, backgroundColor: '#f3e5f5', justifyContent: 'center', alignItems: 'center', marginRight: 15 },
+  hinoNumber: { fontWeight: 'bold', color: '#4a148c', fontSize: 16 },
+  hinoTitle: { fontWeight: 'bold', fontSize: 16, color: '#4a148c', marginBottom: 4 },
+  hinoPreview: { color: '#666', fontSize: 14 },
+  hinoModalHeader: { padding: 20, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderBottomWidth: 1, borderBottomColor: '#eee' },
+  hinoModalHeaderTitle: { fontSize: 18, fontWeight: 'bold', color: '#666' },
+  backButton: { padding: 5 },
+  hinoModalContent: { padding: 30, alignItems: 'center' },
+  hinoBadge: { backgroundColor: '#4a148c', paddingHorizontal: 20, paddingVertical: 8, borderRadius: 20, marginBottom: 20 },
+  hinoBadgeText: { color: '#fff', fontWeight: 'bold', fontSize: 16 },
+  hinoFullTitle: { fontSize: 26, fontWeight: 'bold', color: '#333', textAlign: 'center', marginBottom: 10 },
+  hinoFullLyrics: { fontSize: 20, color: '#333', lineHeight: 34, textAlign: 'center' },
+  modalContainer: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' },
+  modalContent: { width: '90%', height: '80%', backgroundColor: '#fff', borderRadius: 15, padding: 20 },
+  modalContentSmall: { width: '80%', backgroundColor: '#fff', borderRadius: 15, padding: 20 },
+  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15 },
+  modalTitle: { fontSize: 20, fontWeight: 'bold', color: '#4a148c', textAlign: 'center', marginBottom: 10 },
+  modalItem: { paddingVertical: 15, borderBottomWidth: 1, borderBottomColor: '#f0f0f0' },
+  modalItemText: { fontSize: 18, color: '#333' },
+  versionItem: { paddingVertical: 15, borderBottomWidth: 1, borderBottomColor: '#eee', flexDirection: 'row', justifyContent: 'space-between' },
+  versionItemText: { fontSize: 16, color: '#333' },
+  closeButton: { marginTop: 15, padding: 12, backgroundColor: '#eee', borderRadius: 8, alignItems: 'center' },
+  closeButtonText: { fontWeight: 'bold', color: '#333' },
+  gridContainer: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center' },
+  gridItem: { width: 50, height: 50, borderRadius: 25, backgroundColor: '#f3e5f5', justifyContent: 'center', alignItems: 'center', margin: 6 },
+  gridItemActive: { backgroundColor: '#4a148c' },
+  gridText: { fontSize: 16, fontWeight: 'bold', color: '#4a148c' },
+  gridTextActive: { color: '#fff' },
 });
