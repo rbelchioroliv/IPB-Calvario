@@ -8,16 +8,16 @@ import { Ionicons } from '@expo/vector-icons';
 
 export default function AddEvento() {
   const router = useRouter();
-  const { editId } = useLocalSearchParams(); // Captura o ID caso seja edição
+  const { editId } = useLocalSearchParams(); 
 
   const [titulo, setTitulo] = useState('');
   const [sobre, setSobre] = useState('');
   const [loading, setLoading] = useState(false);
 
   // Campos de Data e Hora
-  const [selectedDate, setSelectedDate] = useState(''); // Formato YYYY-MM-DD
-  const [horaInicio, setHoraInicio] = useState('');     // Formato HH:mm
-  const [horaFim, setHoraFim] = useState('');           // Formato HH:mm
+  const [selectedDate, setSelectedDate] = useState(''); 
+  const [horaInicio, setHoraInicio] = useState('');     
+  const [horaFim, setHoraFim] = useState('');           
   const [showCalendar, setShowCalendar] = useState(false);
 
   // Carregar dados caso seja edição
@@ -48,20 +48,19 @@ export default function AddEvento() {
     }
   };
 
-  // Função para validar se um horário sobrepõe outro
-  // Lógica: (Início1 < Fim2) && (Fim1 > Início2)
+ 
   const existeConflito = (hIn: string, hFim: string, agendaIn: string, agendaFim: string): boolean => {
     return hIn < agendaFim && hFim > agendaIn;
   };
 
   const salvarEvento = async () => {
-    // 1. Validação básica de campos
+    
     if (!titulo || !selectedDate || !horaInicio || !horaFim || !sobre) {
       Alert.alert("Erro", "Preencha todos os campos, incluindo data e horários!");
       return;
     }
 
-    // 2. Validação de formato de hora (simples)
+   
     const regexHora = /^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/;
     if (!regexHora.test(horaInicio) || !regexHora.test(horaFim)) {
       Alert.alert("Erro", "Use o formato de hora 00:00");
@@ -76,7 +75,7 @@ export default function AddEvento() {
     setLoading(true);
 
     try {
-      // 3. BUSCA CONFLITOS NO FIREBASE
+    
       const q = query(
         collection(db, "eventos"),
         where("dataISO", "==", selectedDate)
@@ -86,7 +85,7 @@ export default function AddEvento() {
       let conflitoEncontrado = null;
 
       querySnapshot.forEach((docSnap) => {
-        // Se estivermos editando, ignoramos o próprio documento na verificação de conflito
+        
         if (editId && docSnap.id === editId) return;
 
         const eventoExistente = docSnap.data();
@@ -104,7 +103,7 @@ export default function AddEvento() {
         return;
       }
 
-      // 4. PREPARAR DADOS
+
       const dadosEvento = {
         titulo,
         descricao: sobre,
@@ -115,7 +114,7 @@ export default function AddEvento() {
         criadoEm: new Date()
       };
 
-      // 5. SALVAR OU ATUALIZAR
+    
       if (editId) {
         await updateDoc(doc(db, "eventos", editId as string), dadosEvento);
         Alert.alert("Sucesso", "Evento atualizado com sucesso!");

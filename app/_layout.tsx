@@ -6,12 +6,12 @@ import { StatusBar } from 'expo-status-bar';
 
 // Contextos
 import { AdminProvider } from '@/context/AdminContext';
-import { ThemeProvider } from '@/context/ThemeContext'; // <--- Import Novo
+import { ThemeProvider } from '@/context/ThemeContext'; 
 
 export default function RootLayout() {
   const [appIsReady, setAppIsReady] = useState(false);
   
-  // Animação da Splash Screen (MANTIDA)
+
   const fadeAnim = useRef(new Animated.Value(0)).current;  
   const scaleAnim = useRef(new Animated.Value(0.8)).current; 
 

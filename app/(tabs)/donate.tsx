@@ -1,7 +1,7 @@
-import React, { useState, useCallback } from 'react'; // Adicionado useCallback
+import React, { useState, useCallback } from 'react'; 
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert, Clipboard, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter, useFocusEffect } from 'expo-router'; // Adicionado useFocusEffect
+import { useRouter, useFocusEffect } from 'expo-router'; 
 
 // Firebase Imports
 import { db } from '@/services/firebaseConfig';
@@ -20,10 +20,10 @@ export default function DonateScreen() {
   const [pixKey, setPixKey] = useState("Carregando...");
   const [bankInfo, setBankInfo] = useState("Carregando...");
 
-  // USAR useFocusEffect PARA ATUALIZAR SEMPRE QUE A TELA APARECER
+  
   useFocusEffect(
     useCallback(() => {
-      let isActive = true; // Garante que não atualize se a tela fechar
+      let isActive = true; 
 
       const fetchInfo = async () => {
         try {
@@ -34,7 +34,7 @@ export default function DonateScreen() {
             const data = docSnap.data();
             setPixKey(data.pix || "Chave não cadastrada");
 
-            // Lógica de exibição (Texto pronto ou montado na hora)
+           
             if (data.bank) {
               setBankInfo(data.bank);
             } 
@@ -120,7 +120,7 @@ export default function DonateScreen() {
           <Text style={[styles.bankInfo, { color: colors.text }]}>{bankInfo}</Text>
         </View>
 
-        {/* Botão visível apenas para Admins */}
+       
         {isAdmin && (
           <TouchableOpacity 
             style={[styles.editButton, { backgroundColor: colors.primary }]}

@@ -7,7 +7,7 @@ export default function AdminLayout() {
       headerStyle: { backgroundColor: '#4a148c' },
       headerTintColor: '#fff',
       headerTitleStyle: { fontWeight: 'bold' },
-      animation: 'slide_from_right' // Animação bonita ao entrar
+      animation: 'slide_from_right' 
     }}>
       <Stack.Screen name="index" options={{ title: 'Painel Administrativo' }} />
       <Stack.Screen name="add_evento" options={{ title: 'Novo Evento' }} />

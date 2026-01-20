@@ -9,7 +9,7 @@ import { useAdmin } from '@/context/AdminContext';
 import { useRouter } from 'expo-router'; 
 
 import { CacheService } from '@/services/CacheService';
-// IMPORT DO TEMA
+
 import { useTheme } from '@/context/ThemeContext';
 
 LocaleConfig.locales['pt-br'] = {

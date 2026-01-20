@@ -12,8 +12,8 @@ const firebaseConfig = {
   appId: process.env.EXPO_PUBLIC_FIREBASE_APP_ID
 };
 
-// Inicializa o Firebase
+
 const app = initializeApp(firebaseConfig);
 
-// Inicializa o Banco de Dados
+
 export const db = getFirestore(app);

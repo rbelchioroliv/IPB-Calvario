@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ActivityIndicator, ScrollView, SafeAreaView } from 'react-native';
 import { db } from '@/services/firebaseConfig';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
-// 1. ADICIONE O IMPORT DO 'Stack'
+
 import { useRouter, Stack } from 'expo-router'; 
 import { useTheme } from '@/context/ThemeContext';
 
@@ -104,12 +104,12 @@ export default function EditDonate() {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-      {/* 2. CONFIGURAÇÃO DA BARRA DE NAVEGAÇÃO */}
+   
       <Stack.Screen 
         options={{ 
-          title: "Editar Dados", // O novo nome
-          headerStyle: { backgroundColor: colors.card }, // Cor do fundo da barra
-          headerTintColor: colors.text, // Cor do texto e da seta
+          title: "Editar Dados", 
+          headerStyle: { backgroundColor: colors.card }, 
+          headerTintColor: colors.text, 
           headerTitleStyle: { fontWeight: 'bold' } 
         }} 
       />

@@ -1,24 +1,24 @@
 import { Tabs } from 'expo-router';
 import React from 'react';
 import { Ionicons } from '@expo/vector-icons';
-import { useTheme } from '@/context/ThemeContext'; // <--- Import do Tema
+import { useTheme } from '@/context/ThemeContext'; 
 
 export default function TabLayout() {
-  // Pegando as cores do tema atual (Dark ou Light)
+ 
   const { colors } = useTheme();
 
   return (
     <Tabs
       screenOptions={{
         // Cores Dinâmicas
-        tabBarActiveTintColor: colors.primary,       // Cor do ícone ativo
-        tabBarInactiveTintColor: colors.textSecondary, // Cor do ícone inativo
+        tabBarActiveTintColor: colors.primary,       
+        tabBarInactiveTintColor: colors.textSecondary, 
         headerShown: false,
         tabBarStyle: { 
           paddingBottom: 5, 
           height: 60, 
-          backgroundColor: colors.card,      // Fundo da barra (muda conforme o tema)
-          borderTopColor: colors.border,     // Borda suave no topo
+          backgroundColor: colors.card,      
+          borderTopColor: colors.border,     
         },
       }}>
       <Tabs.Screen

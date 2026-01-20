@@ -37,7 +37,7 @@ export default function AddAviso() {
         descricao: sobre,
         data: new Date().toLocaleDateString('pt-BR'),
         criadoEm: new Date(),
-        isPinned: false // Valor padrão inicial
+        isPinned: false 
       };
 
       if (editId) {

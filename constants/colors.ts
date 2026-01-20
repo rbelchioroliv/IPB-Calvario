@@ -1,10 +1,10 @@
 export const Colors = {
   light: {
-    background: '#f3e5f5', // Roxo bem clarinho (atual)
+    background: '#f3e5f5', // Roxo bem clarinho
     card: '#ffffff',
     text: '#333333',
     textSecondary: '#666666',
-    primary: '#4a148c',    // Roxo forte (atual)
+    primary: '#4a148c',    // Roxo forte 
     accent: '#7b1fa2',     // Roxo médio
     icon: '#4a148c',
     border: '#e1bee7',

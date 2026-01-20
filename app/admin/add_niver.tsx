@@ -6,14 +6,14 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 
 export default function AddNiver() {
   const router = useRouter();
-  const { editId } = useLocalSearchParams(); // Captura o ID para edição
+  const { editId } = useLocalSearchParams(); 
 
   const [nome, setNome] = useState('');
   const [dia, setDia] = useState('');
   const [mes, setMes] = useState('');
   const [loading, setLoading] = useState(false);
 
-  // Carrega os dados se for edição
+  
   useEffect(() => {
     if (editId) {
       carregarDadosEdicao();
@@ -63,11 +63,11 @@ export default function AddNiver() {
       };
 
       if (editId) {
-        // ATUALIZA
+        
         await updateDoc(doc(db, "aniversariantes", editId as string), dados);
         Alert.alert("Sucesso", "Dados atualizados com sucesso!");
       } else {
-        // CRIA NOVO
+        
         await addDoc(collection(db, "aniversariantes"), dados);
         Alert.alert("Sucesso", "Aniversariante cadastrado!");
       }
