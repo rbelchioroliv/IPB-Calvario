@@ -4,6 +4,28 @@ Aplicativo oficial da **Igreja Presbiteriana Calvário**, desenvolvido para cone
 
 Desenvolvido com **React Native**, **Expo** e **Firebase**.
 
+
+<div align="left">
+
+  ### 📲 Teste agora no seu Android
+
+  <a href="https://github.com/rbelchioroliv/IPB-Calvario/releases/download/v1.0-beta-test/IPB_Calvario.apk">
+    <img src="https://img.shields.io/badge/Baixar%20APK-blue?style=for-the-badge&logo=android" height="40">
+  </a>
+  
+  [![Download](https://img.shields.io/badge/Download-V1.0-lightgreen?style=for-the-badge&logo=github)](https://github.com/rbelchioroliv/IPB-Calvario/releases/download/v1.0-beta-test/IPB_Calvario.apk)
+  
+
+  <p>Ou escaneie para baixar no celular:</p>
+  
+  <img src="https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=https://github.com/rbelchioroliv/IPB-Calvario/releases/download/v1.0-beta-test/IPB_Calvario.apk" width="150" alt="QR Code para download">
+
+  <br>
+  <sub>⚠️ Lembre-se de permitir instalação de fontes desconhecidas nas configurações do Android.</sub>
+
+</div>
+
+
 ---
 
 ## ✨ Funcionalidades
