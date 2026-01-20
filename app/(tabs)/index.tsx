@@ -2,55 +2,60 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { 
   View, Text, StyleSheet, ScrollView, Image, ActivityIndicator, 
   RefreshControl, TouchableOpacity, TouchableWithoutFeedback, 
-  Modal, TextInput, Alert, Button 
+  Modal, TextInput, Alert, Platform, Dimensions 
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 
-// --- IMPORTS DO FIREBASE CORRIGIDOS (Adicionados limit e where) ---
+// FIREBASE & SERVIÇOS
 import { db } from '@/services/firebaseConfig';
 import { 
   collection, getDocs, query, orderBy, doc, deleteDoc, updateDoc, 
   limit, where 
 } from 'firebase/firestore'; 
 
+// CONSTANTES E CONTEXTOS
 import { API_TOKEN } from '@/constants/churchData';
 import { useAdmin } from '@/context/AdminContext';
-
-// Import do Serviço de Cache
 import { CacheService } from '@/services/CacheService';
+import { useTheme } from '@/context/ThemeContext';
 
 export default function HomeScreen() {
   const router = useRouter();
   const { isAdmin, loginAdmin, logoutAdmin } = useAdmin();
+  const { colors, toggleTheme, isDark } = useTheme();
 
-  // Estados
+  // Estados de Dados
   const [avisos, setAvisos] = useState<any[]>([]);
   const [aniversariantes, setAniversariantes] = useState<any[]>([]);
   const [versiculoDoDia, setVersiculoDoDia] = useState<any>(null);
   
+  // Estados de UI
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   
-  // Estados do Admin Login
+  // Estados Admin (Login Secreto)
   const [clickCount, setClickCount] = useState(0);
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [senhaInput, setSenhaInput] = useState('');
 
+  // Estados do Modal de Aniversariante
+  const [selectedBirthday, setSelectedBirthday] = useState<any>(null);
+  const [showBirthdayModal, setShowBirthdayModal] = useState(false);
+
+  // Datas
   const dataHojeObj = new Date();
   const nomesMeses = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
   const nomeMesAtual = nomesMeses[dataHojeObj.getMonth()];
   const dataFormatadaHoje = dataHojeObj.toISOString().split('T')[0];
 
-  // --- CARREGAMENTO DE DADOS COM CACHE (OFFLINE FIRST) ---
-  
+  // --- CARREGAMENTO DE DADOS ---
   const carregarVersiculoDoDia = async () => {
     try {
       const dataSalva = await AsyncStorage.getItem('@versiculo_data');
       const versiculoSalvoStr = await AsyncStorage.getItem('@versiculo_atual');
       
-      // Se já tem o do dia salvo, usa ele
       if (dataSalva === dataFormatadaHoje && versiculoSalvoStr) {
         const v = JSON.parse(versiculoSalvoStr);
         if (v.livro && v.capitulo) {
@@ -59,7 +64,6 @@ export default function HomeScreen() {
         }
       }
 
-      // Se não tem ou mudou o dia, busca online
       const response = await fetch('https://www.abibliadigital.com.br/api/verses/nvi/random', {
         method: 'GET',
         headers: { 'Authorization': `Bearer ${API_TOKEN}`, 'Accept': 'application/json' }
@@ -78,7 +82,6 @@ export default function HomeScreen() {
         await AsyncStorage.setItem('@versiculo_atual', JSON.stringify(versiculoFormatado));
       }
     } catch (error) {
-      // Fallback offline caso nunca tenha baixado nada
       setVersiculoDoDia({
         texto: "Por isso não tema, pois estou com você; não tenha medo, pois sou o seu Deus.",
         ref: "Isaías 41:10",
@@ -89,25 +92,20 @@ export default function HomeScreen() {
   };
 
   const carregarDados = async () => {
-    // Só mostra o loading de tela cheia se a lista estiver vazia (primeira carga)
     if (avisos.length === 0) setLoading(true);
     
     try {
       await carregarVersiculoDoDia();
 
-      // 1. AVISOS COM CACHE
       const avisosData = await CacheService.getSmart('home_avisos', async () => {
-        // Busca Online
         const qAvisos = query(collection(db, "avisos"), orderBy("isPinned", "desc"), orderBy("criadoEm", "desc"), limit(10));
         const snapshot = await getDocs(qAvisos);
         return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       });
       if (avisosData) setAvisos(avisosData);
 
-      // 2. ANIVERSARIANTES COM CACHE
       const niverData = await CacheService.getSmart('home_aniversariantes', async () => {
         const mesAtualNum = dataHojeObj.getMonth() + 1;
-        // Tenta buscar filtrado pelo mês. Se falhar, busca tudo e filtra.
         const qNiver = query(collection(db, "aniversariantes"), where("mes", "==", mesAtualNum));
         const snapshot = await getDocs(qNiver);
         const lista = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as any));
@@ -123,50 +121,67 @@ export default function HomeScreen() {
     }
   };
 
-  // --- HOOKS DE EFEITO ---
-  useEffect(() => { 
-    carregarDados(); 
-  }, []);
+  useFocusEffect(
+    useCallback(() => {
+      carregarDados();
+    }, [])
+  );
 
   const onRefresh = useCallback(() => { 
     setRefreshing(true); 
+    CacheService.clear('home_avisos');
+    CacheService.clear('home_aniversariantes');
     carregarDados(); 
   }, []);
 
-  // --- FUNÇÕES DE ADMIN ---
-
+  // --- FUNÇÕES ADMIN ---
   const handleTogglePin = async (id: string, currentStatus: boolean) => {
     try {
       await updateDoc(doc(db, "avisos", id), { isPinned: !currentStatus });
-      carregarDados(); // Atualiza a lista manualmente
-    } catch (e) {
-      Alert.alert("Erro", "Falha ao fixar aviso.");
-    }
+      CacheService.clear('home_avisos'); 
+      carregarDados();
+    } catch (e) { Alert.alert("Erro", "Falha ao fixar aviso."); }
   };
 
   const handleDeleteAviso = (id: string) => {
-    Alert.alert("Excluir Aviso", "Confirma a exclusão?", [
+    Alert.alert("Excluir", "Apagar aviso?", [
+      { text: "Não" }, 
+      { text: "Sim", style: 'destructive', onPress: async () => { 
+        await deleteDoc(doc(db, "avisos", id)); 
+        CacheService.clear('home_avisos'); 
+        carregarDados(); 
+      }}
+    ]);
+  };
+
+  // Funções do Modal de Aniversariante
+  const handleOpenBirthday = (pessoa: any) => {
+    setSelectedBirthday(pessoa);
+    setShowBirthdayModal(true);
+  };
+
+  const handleEditBirthday = () => {
+    setShowBirthdayModal(false);
+    if (selectedBirthday) {
+      router.push({ pathname: '/admin/add_niver', params: { editId: selectedBirthday.id } });
+    }
+  };
+
+  const handleDeleteBirthdayFromModal = () => {
+    Alert.alert("Excluir", `Remover ${selectedBirthday.nome} da lista?`, [
       { text: "Cancelar" },
-      { text: "Excluir", style: 'destructive', onPress: async () => {
-          await deleteDoc(doc(db, "avisos", id));
-          carregarDados(); // Atualiza a lista
+      { 
+        text: "Excluir", 
+        style: 'destructive', 
+        onPress: async () => { 
+          setShowBirthdayModal(false);
+          await deleteDoc(doc(db, "aniversariantes", selectedBirthday.id)); 
+          CacheService.clear('home_aniversariantes'); 
+          carregarDados(); 
         } 
       }
     ]);
   };
-
-  const handleDeleteNiver = (id: string) => {
-    Alert.alert("Remover Aniversariante", "Confirma a exclusão?", [
-      { text: "Cancelar" },
-      { text: "Remover", style: 'destructive', onPress: async () => {
-          await deleteDoc(doc(db, "aniversariantes", id));
-          carregarDados(); // Atualiza a lista
-        } 
-      }
-    ]);
-  };
-
-  // --- OUTRAS FUNÇÕES ---
 
   const handleLogoPress = () => {
     if (isAdmin) return;
@@ -190,195 +205,350 @@ export default function HomeScreen() {
   };
 
   const lerCapituloCompleto = () => {
-    if (versiculoDoDia && versiculoDoDia.livro && versiculoDoDia.capitulo) {
-      router.push({
-        pathname: "/bible",
-        params: {
-          livroAutomatico: versiculoDoDia.livro,
-          capituloAutomatico: versiculoDoDia.capitulo
-        }
-      });
+    if (versiculoDoDia?.livro && versiculoDoDia?.capitulo) {
+      router.push({ pathname: "/bible", params: { livroAutomatico: versiculoDoDia.livro, capituloAutomatico: versiculoDoDia.capitulo } });
     } else {
       onRefresh();
     }
   };
 
-  // --- RENDERIZAÇÃO ---
-
-  // O loading deve ser condicional aqui para não bloquear a renderização dos hooks acima
   if (loading && avisos.length === 0) {
     return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-        <ActivityIndicator size="large" color="#4a148c" />
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.background }}>
+        <ActivityIndicator size="large" color={colors.primary} />
       </View>
     );
   }
 
   return (
-    <ScrollView style={styles.container} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}>
-      <View style={styles.header}>
-        <TouchableWithoutFeedback onPress={handleLogoPress}>
-          <Image source={require('@/assets/images/logo-igreja.png')} style={styles.logo} resizeMode="contain" />
-        </TouchableWithoutFeedback>
-        <Text style={styles.churchName}>IPB Calvário</Text>
-        <Text style={styles.subTitle}>Seja bem-vindo!</Text>
-      </View>
-
-      <View style={styles.card}>
-        <View style={styles.cardHeader}>
-          <Ionicons name="book" size={20} color="#6a1b9a" />
-          <Text style={styles.cardTitle}>Versículo do Dia</Text>
-        </View>
-        {versiculoDoDia ? (
-          <>
-            <Text style={styles.verseText}>"{versiculoDoDia.texto}"</Text>
-            <Text style={styles.verseRef}>- {versiculoDoDia.ref}</Text>
-            <TouchableOpacity style={styles.readMoreBtn} onPress={lerCapituloCompleto}>
-              <Text style={styles.readMoreText}>Ler capítulo completo</Text>
-              <Ionicons name="arrow-forward" size={14} color="#fff" />
-            </TouchableOpacity>
-          </>
-        ) : (
-          <ActivityIndicator color="#4a148c" />
-        )}
-      </View>
-
-      <Text style={styles.sectionTitle}>Quadro de Avisos</Text>
-      {avisos.length === 0 ? (
-        <View style={styles.emptyContainer}>
-          <Ionicons name="notifications-off-outline" size={40} color="#ccc" />
-          <Text style={styles.emptyText}>Nenhum aviso cadastrado.</Text>
-        </View>
-      ) : (
-        avisos.map((aviso) => (
-          <View key={aviso.id} style={[styles.avisoCard, aviso.isPinned && styles.avisoCardPinned]}>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-              <Text style={styles.avisoDate}>{aviso.isPinned ? "📌 FIXADO" : aviso.data}</Text>
-
-              {isAdmin && (
-                <View style={{ flexDirection: 'row', gap: 15 }}>
-                  <TouchableOpacity onPress={() => handleTogglePin(aviso.id, aviso.isPinned)}>
-                    <Ionicons name="pin" size={18} color={aviso.isPinned ? "#ff9800" : "#ccc"} />
-                  </TouchableOpacity>
-                  <TouchableOpacity onPress={() => router.push({ pathname: '/admin/add_aviso', params: { editId: aviso.id } })}>
-                    <Ionicons name="create-outline" size={18} color="#4a148c" />
-                  </TouchableOpacity>
-                  <TouchableOpacity onPress={() => handleDeleteAviso(aviso.id)}>
-                    <Ionicons name="trash-outline" size={18} color="red" />
-                  </TouchableOpacity>
-                </View>
-              )}
+    <View style={{ flex: 1, backgroundColor: colors.background }}>
+      <ScrollView 
+        style={{ flex: 1 }}
+        contentContainerStyle={{ paddingBottom: 40 }}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
+      >
+        
+        {/* === HEADER === */}
+        <View style={[styles.headerContainer, { backgroundColor: colors.primary }]}>
+          <View style={styles.headerContent}>
+            <View>
+              <Text style={styles.headerWelcome}>Seja bem-vindo à</Text>
+              <Text style={styles.headerTitle}>IPB Calvário</Text>
             </View>
-            <Text style={styles.avisoTitle}>{aviso.titulo}</Text>
-            <Text style={styles.avisoDesc}>{aviso.descricao}</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+              <TouchableOpacity onPress={toggleTheme} style={styles.iconButton}>
+                <Ionicons name={isDark ? "sunny" : "moon"} size={22} color="#fff" />
+              </TouchableOpacity>
+              <TouchableWithoutFeedback onPress={handleLogoPress}>
+                <Image source={require('@/assets/images/logo-igreja.png')} style={styles.logoSmall} resizeMode="contain" />
+              </TouchableWithoutFeedback>
+            </View>
           </View>
-        ))
-      )}
-
-      <View style={styles.bdaySection}>
-        <View style={styles.bdayHeader}>
-          <Ionicons name="gift-outline" size={24} color="#4a148c" />
-          <Text style={styles.sectionTitleBday}>Aniversariantes de {nomeMesAtual}</Text>
         </View>
-        {aniversariantes.length === 0 ? (
-          <Text style={styles.emptyText}>Nenhum aniversariante encontrado.</Text>
-        ) : (
-          <View style={styles.bdayList}>
-            {aniversariantes.map((pessoa) => (
-              <View key={pessoa.id} style={styles.bdayItem}>
-                <View style={styles.bdayDateBox}>
-                  <Text style={styles.bdayDay}>Dia {pessoa.dia}</Text>
+
+        {/* === CARD FLUTUANTE (VERSÍCULO) === */}
+        <View style={[styles.verseCard, { backgroundColor: colors.card, shadowColor: colors.text }]}>
+          <View style={styles.verseHeader}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <Ionicons name="sparkles" size={16} color={colors.accent} />
+              <Text style={[styles.verseLabel, { color: colors.textSecondary }]}>Palavra do Dia</Text>
+            </View>
+            {versiculoDoDia && (
+              <TouchableOpacity onPress={lerCapituloCompleto}>
+                <Text style={[styles.readMoreLink, { color: colors.primary }]}>Ler capítulo</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+
+          {versiculoDoDia ? (
+            <View style={{ marginTop: 10 }}>
+              {/* ÍCONE CORRIGIDO AQUI */}
+              <Ionicons name="chatbox-ellipses" size={30} color={colors.border} style={styles.quoteIcon} />
+              <Text style={[styles.verseText, { color: colors.text }]}>"{versiculoDoDia.texto}"</Text>
+              <Text style={[styles.verseRef, { color: colors.primary }]}>{versiculoDoDia.ref}</Text>
+            </View>
+          ) : (
+            <ActivityIndicator color={colors.primary} style={{ marginVertical: 20 }} />
+          )}
+        </View>
+
+        {/* === ANIVERSARIANTES (Carrossel Interativo) === */}
+        <View style={styles.sectionContainer}>
+          <View style={styles.sectionHeader}>
+            <Text style={[styles.sectionTitle, { color: colors.text }]}>Aniversariantes</Text>
+            <Text style={[styles.sectionSubtitle, { color: colors.primary }]}>{nomeMesAtual}</Text>
+          </View>
+
+          {aniversariantes.length === 0 ? (
+            <View style={[styles.emptyBox, { borderColor: colors.border }]}>
+              <Text style={[styles.emptyText, { color: colors.textSecondary }]}>Nenhum aniversariante neste mês.</Text>
+            </View>
+          ) : (
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 20, gap: 15 }}>
+              {aniversariantes.map((pessoa) => (
+                <TouchableOpacity 
+                  key={pessoa.id} 
+                  style={styles.storyContainer}
+                  onPress={() => handleOpenBirthday(pessoa)}
+                >
+                  <View style={[styles.storyCircle, { borderColor: colors.primary, backgroundColor: colors.card }]}>
+                    <Text style={[styles.storyDay, { color: colors.primary }]}>{pessoa.dia}</Text>
+                    <Text style={[styles.storyMonth, { color: colors.textSecondary }]}>{nomeMesAtual.substring(0,3)}</Text>
+                  </View>
+                  <Text numberOfLines={1} style={[styles.storyName, { color: colors.text }]}>
+                    {pessoa.nome.split(' ')[0]}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          )}
+        </View>
+
+        {/* === MURAL DE AVISOS === */}
+        <View style={styles.sectionContainer}>
+          <Text style={[styles.sectionTitle, { color: colors.text, paddingHorizontal: 20, marginBottom: 15 }]}>Mural de Avisos</Text>
+
+          {avisos.length === 0 ? (
+            <View style={[styles.emptyContainer, { marginHorizontal: 20 }]}>
+              <Ionicons name="notifications-off-outline" size={40} color={colors.textSecondary} />
+              <Text style={[styles.emptyText, { color: colors.textSecondary, marginTop: 10 }]}>Nenhum aviso no momento.</Text>
+            </View>
+          ) : (
+            avisos.map((aviso) => (
+              <View 
+                key={aviso.id} 
+                style={[
+                  styles.avisoCard, 
+                  { 
+                    backgroundColor: colors.card,
+                    shadowColor: colors.text,
+                    borderColor: aviso.isPinned ? colors.pinBorder : colors.border,
+                    borderWidth: 1
+                  }
+                ]}
+              >
+                <View style={styles.avisoHeaderRow}>
+                  <View style={[styles.dateTag, { backgroundColor: isDark ? '#333' : '#f0f0f0' }]}>
+                    <Ionicons name="calendar-outline" size={12} color={colors.textSecondary} />
+                    <Text style={[styles.dateTagText, { color: colors.textSecondary }]}>{aviso.data}</Text>
+                  </View>
+                  {aviso.isPinned && (
+                    <Ionicons name="push-outline" size={20} color={colors.pinBorder} />
+                  )}
                 </View>
-                <Text style={styles.bdayName}>{pessoa.nome}</Text>
+
+                <Text style={[styles.avisoTitle, { color: colors.primary }]}>{aviso.titulo}</Text>
+                <Text style={[styles.avisoDesc, { color: colors.text }]}>{aviso.descricao}</Text>
 
                 {isAdmin && (
-                  <View style={{ flexDirection: 'row', gap: 15, marginRight: 10 }}>
-                    <TouchableOpacity onPress={() => router.push({ pathname: '/admin/add_niver', params: { editId: pessoa.id } })}>
-                      <Ionicons name="create-outline" size={18} color="#4a148c" />
+                  <View style={[styles.avisoFooterAdmin, { borderTopColor: colors.border }]}>
+                    <TouchableOpacity 
+                      style={styles.adminActionBtn} 
+                      onPress={() => handleTogglePin(aviso.id, aviso.isPinned)}
+                    >
+                      <Ionicons name={aviso.isPinned ? "pin" : "pin-outline"} size={18} color={aviso.isPinned ? "#ff9800" : colors.textSecondary} />
+                      <Text style={{ fontSize: 12, color: colors.textSecondary, marginLeft: 4 }}>
+                        {aviso.isPinned ? "Desfixar" : "Fixar"}
+                      </Text>
                     </TouchableOpacity>
-                    <TouchableOpacity onPress={() => handleDeleteNiver(pessoa.id)}>
+
+                    <TouchableOpacity 
+                      style={styles.adminActionBtn} 
+                      onPress={() => router.push({ pathname: '/admin/add_aviso', params: { editId: aviso.id } })}
+                    >
+                      <Ionicons name="create-outline" size={18} color={colors.primary} />
+                      <Text style={{ fontSize: 12, color: colors.primary, marginLeft: 4 }}>Editar</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity 
+                      style={styles.adminActionBtn} 
+                      onPress={() => handleDeleteAviso(aviso.id)}
+                    >
                       <Ionicons name="trash-outline" size={18} color="red" />
+                      <Text style={{ fontSize: 12, color: "red", marginLeft: 4 }}>Excluir</Text>
                     </TouchableOpacity>
                   </View>
                 )}
-                <Ionicons name="happy-outline" size={18} color="#9c27b0" />
               </View>
-            ))}
+            ))
+          )}
+        </View>
+
+        {/* === ÁREA ADMIN (Rodapé) === */}
+        {isAdmin && (
+          <View style={[styles.adminFooter, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <Text style={[styles.adminTitle, { color: colors.text }]}>Painel Administrativo</Text>
+            <View style={styles.adminButtons}>
+               <TouchableOpacity style={[styles.adminBtn, { borderColor: colors.primary }]} onPress={() => router.push('/admin')}>
+                 <Text style={{ color: colors.primary, fontWeight:'bold' }}>Acessar Painel</Text>
+               </TouchableOpacity>
+               <TouchableOpacity style={[styles.adminBtn, { borderColor: 'red' }]} onPress={logoutAdmin}>
+                 <Text style={{ color: 'red', fontWeight:'bold' }}>Sair</Text>
+               </TouchableOpacity>
+            </View>
           </View>
         )}
-      </View>
+      </ScrollView>
 
-      {isAdmin ? (
-        <View style={{ margin: 20, backgroundColor: '#fff', borderRadius: 10, padding: 15, elevation: 3, borderLeftWidth: 5, borderLeftColor: '#4a148c' }}>
-          <Text style={{ fontWeight: 'bold', fontSize: 16, color: '#4a148c', marginBottom: 10 }}>
-            👮 Área Restrita (Admin)
-          </Text>
-          <TouchableOpacity
-            style={{ backgroundColor: '#4a148c', padding: 12, borderRadius: 8, marginBottom: 10 }}
-            onPress={() => router.push('/admin')}
-          >
-            <Text style={{ color: '#fff', textAlign: 'center', fontWeight: 'bold' }}>
-              ACESSAR PAINEL DE CONTROLE
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity onPress={logoutAdmin} style={{ padding: 10 }}>
-            <Text style={{ color: 'red', textAlign: 'center', fontSize: 12 }}>Sair do Modo Admin</Text>
-          </TouchableOpacity>
+      {/* === MODAL DETALHES ANIVERSARIANTE === */}
+      <Modal visible={showBirthdayModal} transparent animationType="fade">
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { backgroundColor: colors.card }]}>
+            {selectedBirthday && (
+              <>
+                <View style={{ alignItems: 'center', marginBottom: 20 }}>
+                  <View style={[styles.storyCircleLarge, { borderColor: colors.primary, backgroundColor: colors.background }]}>
+                    <Text style={[styles.storyDayLarge, { color: colors.primary }]}>{selectedBirthday.dia}</Text>
+                    <Text style={[styles.storyMonthLarge, { color: colors.textSecondary }]}>{nomeMesAtual}</Text>
+                  </View>
+                  <Text style={[styles.modalTitle, { color: colors.text, marginTop: 10 }]}>{selectedBirthday.nome}</Text>
+                  <Text style={[styles.modalSubtitle, { color: colors.textSecondary }]}>🎉 Parabéns!</Text>
+                </View>
+
+                {isAdmin ? (
+                  <View style={{ flexDirection: 'row', gap: 10 }}>
+                    <TouchableOpacity style={[styles.modalBtnAction, { backgroundColor: colors.primary }]} onPress={handleEditBirthday}>
+                      <Ionicons name="create" size={18} color="#fff" />
+                      <Text style={{ color: '#fff', fontWeight: 'bold', marginLeft: 5 }}>Editar</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={[styles.modalBtnAction, { backgroundColor: 'red' }]} onPress={handleDeleteBirthdayFromModal}>
+                      <Ionicons name="trash" size={18} color="#fff" />
+                      <Text style={{ color: '#fff', fontWeight: 'bold', marginLeft: 5 }}>Excluir</Text>
+                    </TouchableOpacity>
+                  </View>
+                ) : null}
+
+                <TouchableOpacity 
+                  style={[styles.modalBtnClose, { backgroundColor: colors.inputBg }]} 
+                  onPress={() => setShowBirthdayModal(false)}
+                >
+                  <Text style={{ color: colors.text, fontWeight: 'bold' }}>Fechar</Text>
+                </TouchableOpacity>
+              </>
+            )}
+          </View>
         </View>
-      ) : (
-        <View style={{ height: 20 }} />
-      )}
+      </Modal>
 
+      {/* === MODAL LOGIN ADMIN === */}
       <Modal visible={showLoginModal} transparent animationType="fade">
-        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', alignItems: 'center' }}>
-          <View style={{ width: '80%', backgroundColor: '#fff', padding: 20, borderRadius: 15, elevation: 10 }}>
-            <Text style={{ fontSize: 18, fontWeight: 'bold', marginBottom: 15, textAlign: 'center' }}>🔒 Acesso da Liderança</Text>
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { backgroundColor: colors.card }]}>
+            <Text style={[styles.modalTitle, { color: colors.text }]}>Área Restrita</Text>
+            <Text style={[styles.modalSubtitle, { color: colors.textSecondary }]}>Acesso exclusivo para liderança</Text>
             <TextInput
-              placeholder="Digite a Senha Mestra"
+              placeholder="Senha Mestra"
+              placeholderTextColor={colors.textSecondary}
               secureTextEntry
               keyboardType="numeric"
-              style={{ borderWidth: 1, borderColor: '#ccc', borderRadius: 8, padding: 10, marginBottom: 20, fontSize: 16, textAlign: 'center' }}
+              style={[styles.modalInput, { backgroundColor: colors.inputBg, color: colors.text, borderColor: colors.border }]}
               value={senhaInput}
               onChangeText={setSenhaInput}
             />
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-              <Button title="Cancelar" color="#999" onPress={() => setShowLoginModal(false)} />
-              <Button title="Entrar" color="#4a148c" onPress={tentarLogin} />
+            <View style={styles.modalButtons}>
+              <TouchableOpacity style={styles.modalBtnCancel} onPress={() => setShowLoginModal(false)}>
+                <Text style={{color: colors.textSecondary}}>Cancelar</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.modalBtnConfirm, { backgroundColor: colors.primary }]} onPress={tentarLogin}>
+                <Text style={{color: '#fff', fontWeight:'bold'}}>Entrar</Text>
+              </TouchableOpacity>
             </View>
           </View>
         </View>
       </Modal>
-    </ScrollView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f3e5f5' },
-  header: { backgroundColor: '#4a148c', padding: 20, paddingTop: 50, paddingBottom: 30, alignItems: 'center', borderBottomLeftRadius: 30, borderBottomRightRadius: 30 },
-  logo: { width: 100, height: 100, marginBottom: 5 },
-  churchName: { fontSize: 26, fontWeight: 'bold', color: '#fff', marginBottom: 2, marginTop: 5 },
-  subTitle: { fontSize: 16, color: '#e1bee7', fontWeight: '600' },
-  card: { backgroundColor: '#fff', margin: 15, padding: 15, borderRadius: 15, marginTop: -25, elevation: 4 },
-  cardHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 10 },
-  cardTitle: { marginLeft: 10, fontWeight: 'bold', color: '#4a148c', fontSize: 16 },
-  verseText: { fontStyle: 'italic', fontSize: 16, color: '#4a148c', lineHeight: 24 },
-  verseRef: { textAlign: 'right', marginTop: 10, fontWeight: 'bold', color: '#8e24aa' },
-  readMoreBtn: { backgroundColor: '#7b1fa2', padding: 10, borderRadius: 8, marginTop: 15, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', alignSelf: 'flex-start' },
-  readMoreText: { color: '#fff', fontWeight: 'bold', marginRight: 5, fontSize: 12 },
-  sectionTitle: { marginLeft: 15, fontSize: 20, fontWeight: 'bold', color: '#4a148c', marginBottom: 15, marginTop: 10 },
-  avisoCard: { backgroundColor: '#fff', marginHorizontal: 15, marginBottom: 10, padding: 15, borderRadius: 12, borderLeftWidth: 5, borderLeftColor: '#8e24aa', elevation: 2 },
-  avisoCardPinned: { borderLeftColor: '#ff9800', backgroundColor: '#fff9f0' },
-  avisoDate: { fontSize: 12, color: '#7b1fa2', fontWeight: 'bold' },
-  avisoTitle: { fontSize: 18, fontWeight: 'bold', marginVertical: 5, color: '#4a148c' },
-  avisoDesc: { color: '#4a148c', lineHeight: 20 },
-  bdaySection: { marginTop: 20, marginHorizontal: 15 },
-  bdayHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 10 },
-  sectionTitleBday: { fontSize: 20, fontWeight: 'bold', color: '#4a148c', marginLeft: 10 },
-  bdayList: { backgroundColor: '#fff', borderRadius: 15, padding: 10, elevation: 2 },
-  bdayItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#f0f0f0' },
-  bdayDateBox: { backgroundColor: '#f3e5f5', paddingHorizontal: 12, paddingVertical: 5, borderRadius: 8, alignItems: 'center', justifyContent: 'center', marginRight: 15 },
-  bdayDay: { fontWeight: 'bold', color: '#4a148c', fontSize: 14 },
-  bdayName: { flex: 1, fontSize: 16, color: '#333' },
-  emptyText: { fontStyle: 'italic', color: '#888', marginLeft: 5 },
-  emptyContainer: { alignItems: 'center', padding: 20 }
+  // HEADER
+  headerContainer: {
+    paddingTop: Platform.OS === 'ios' ? 60 : 50,
+    paddingBottom: 60,
+    paddingHorizontal: 20,
+    borderBottomLeftRadius: 30,
+    borderBottomRightRadius: 30,
+    zIndex: 0,
+  },
+  headerContent: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  headerWelcome: { color: 'rgba(255,255,255,0.8)', fontSize: 14 },
+  headerTitle: { color: '#fff', fontSize: 24, fontWeight: 'bold' },
+  logoSmall: { width: 45, height: 45 },
+  iconButton: { padding: 8, backgroundColor:'rgba(255,255,255,0.15)', borderRadius: 20 },
+
+  // CARD FLUTUANTE
+  verseCard: {
+    marginTop: -40,
+    marginHorizontal: 20,
+    borderRadius: 20,
+    padding: 20,
+    elevation: 8,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 10,
+    marginBottom: 25,
+    zIndex: 10,
+  },
+  verseHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 5 },
+  verseLabel: { fontSize: 12, fontWeight: 'bold', textTransform: 'uppercase' },
+  readMoreLink: { fontSize: 12, fontWeight: 'bold' },
+  quoteIcon: { position: 'absolute', top: -5, left: -5, opacity: 0.15 },
+  verseText: { fontSize: 18, fontStyle:'italic', lineHeight: 26, marginVertical: 15, textAlign: 'center' },
+  verseRef: { fontSize: 14, fontWeight: 'bold', textAlign: 'center' },
+
+  // SEÇÕES
+  sectionContainer: { marginBottom: 30 },
+  sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', paddingHorizontal: 20, marginBottom: 15 },
+  sectionTitle: { fontSize: 20, fontWeight: 'bold' },
+  sectionSubtitle: { fontSize: 14, fontWeight: 'bold', textTransform:'uppercase' },
+
+  // ANIVERSARIANTES (Lista)
+  storyContainer: { alignItems: 'center', width: 70, position: 'relative' },
+  storyCircle: { 
+    width: 65, height: 65, borderRadius: 35, borderWidth: 2, 
+    justifyContent: 'center', alignItems: 'center', marginBottom: 5, elevation: 2 
+  },
+  storyDay: { fontSize: 20, fontWeight: 'bold' },
+  storyMonth: { fontSize: 10, textTransform: 'uppercase', fontWeight: 'bold' },
+  storyName: { fontSize: 12, textAlign: 'center' },
+  emptyBox: { marginHorizontal: 20, padding: 20, borderRadius: 12, borderWidth: 1, borderStyle: 'dashed', alignItems: 'center' },
+
+  // AVISOS
+  avisoCard: { marginHorizontal: 20, marginBottom: 16, borderRadius: 16, padding: 20, elevation: 2, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.08, shadowRadius: 6 },
+  avisoHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
+  dateTag: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20, gap: 5 },
+  dateTagText: { fontSize: 11, fontWeight: 'bold' },
+  avisoTitle: { fontSize: 18, fontWeight: 'bold', marginBottom: 8, lineHeight: 24 },
+  avisoDesc: { fontSize: 15, lineHeight: 22 },
+  avisoFooterAdmin: { marginTop: 15, paddingTop: 10, borderTopWidth: 1, flexDirection: 'row', justifyContent: 'flex-end', gap: 15 },
+  adminActionBtn: { flexDirection: 'row', alignItems: 'center', paddingVertical: 5 },
+  emptyContainer: { alignItems: 'center', padding: 20 },
+  emptyText: { fontStyle: 'italic' },
+
+  // ADMIN FOOTER
+  adminFooter: { marginHorizontal: 20, marginBottom: 20, padding: 15, borderRadius: 12, borderWidth: 1 },
+  adminTitle: { fontWeight: 'bold', fontSize: 14, marginBottom: 10, textAlign:'center' },
+  adminButtons: { flexDirection:'row', justifyContent:'center', gap: 15 },
+  adminBtn: { paddingHorizontal: 20, paddingVertical: 8, borderRadius: 20, borderWidth: 1 },
+
+  // MODAL (Login e Birthday)
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', alignItems: 'center' },
+  modalContent: { width: '85%', padding: 25, borderRadius: 20, elevation: 10 },
+  modalTitle: { fontSize: 20, fontWeight: 'bold', marginBottom: 5, textAlign: 'center' },
+  modalSubtitle: { fontSize: 14, marginBottom: 20, textAlign: 'center' },
+  modalInput: { borderRadius: 10, padding: 12, marginBottom: 20, fontSize: 16, textAlign: 'center', borderWidth: 1 },
+  modalButtons: { flexDirection: 'row', gap: 10, justifyContent: 'space-between' },
+  modalBtnCancel: { flex: 1, padding: 12, alignItems: 'center' },
+  modalBtnConfirm: { flex: 1, padding: 12, borderRadius: 10, alignItems: 'center' },
+  
+  // Estilos específicos Modal Birthday
+  storyCircleLarge: { width: 100, height: 100, borderRadius: 50, borderWidth: 3, justifyContent: 'center', alignItems: 'center', elevation: 4 },
+  storyDayLarge: { fontSize: 32, fontWeight: 'bold' },
+  storyMonthLarge: { fontSize: 16, textTransform: 'uppercase', fontWeight: 'bold' },
+  modalBtnAction: { flex: 1, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', padding: 12, borderRadius: 10 },
+  modalBtnClose: { marginTop: 15, padding: 12, borderRadius: 10, alignItems: 'center' },
 });

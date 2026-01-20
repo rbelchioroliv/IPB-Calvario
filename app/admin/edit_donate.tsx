@@ -2,11 +2,14 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ActivityIndicator, ScrollView, SafeAreaView } from 'react-native';
 import { db } from '@/services/firebaseConfig';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
-import { useRouter } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
+// 1. ADICIONE O IMPORT DO 'Stack'
+import { useRouter, Stack } from 'expo-router'; 
+import { useTheme } from '@/context/ThemeContext';
 
 export default function EditDonate() {
   const router = useRouter();
+  const { colors } = useTheme();
+
   const [loading, setLoading] = useState(false);
   const [fetching, setFetching] = useState(true);
 
@@ -16,25 +19,44 @@ export default function EditDonate() {
   const [banco, setBanco] = useState('');
   const [agencia, setAgencia] = useState('');
   const [conta, setConta] = useState('');
-  const [qrCodeUrl, setQrCodeUrl] = useState(''); // Link da imagem do QR Code
 
   useEffect(() => {
     carregarDadosAtuais();
   }, []);
 
+  const handlePixChange = (text: string) => {
+    if (/^[a-zA-Z]/.test(text)) {
+      setChavePix(text);
+      return;
+    }
+    let value = text.replace(/\D/g, ''); 
+    if (value.length > 14) value = value.slice(0, 14);
+
+    if (value.length <= 11) {
+      value = value.replace(/(\d{3})(\d)/, '$1.$2');
+      value = value.replace(/(\d{3})(\d)/, '$1.$2');
+      value = value.replace(/(\d{3})(\d{1,2})$/, '$1-$2');
+    } else {
+      value = value.replace(/^(\d{2})(\d)/, '$1.$2');
+      value = value.replace(/^(\d{2})\.(\d{3})(\d)/, '$1.$2.$3');
+      value = value.replace(/\.(\d{3})(\d)/, '.$1/$2');
+      value = value.replace(/(\d{4})(\d)/, '$1-$2');
+    }
+    setChavePix(value);
+  };
+
   const carregarDadosAtuais = async () => {
     try {
-      const docRef = doc(db, "configuracoes", "doacoes");
+      const docRef = doc(db, "config", "doacao");
       const docSnap = await getDoc(docRef);
 
       if (docSnap.exists()) {
         const data = docSnap.data();
-        setChavePix(data.chavePix || '');
+        setChavePix(data.pix || '');
         setTitular(data.titular || '');
-        setBanco(data.banco || '');
+        setBanco(data.bancoNome || '');
         setAgencia(data.agencia || '');
         setConta(data.conta || '');
-        setQrCodeUrl(data.qrCodeUrl || '');
       }
     } catch (error) {
       Alert.alert("Erro", "Não foi possível carregar os dados atuais.");
@@ -44,21 +66,23 @@ export default function EditDonate() {
   };
 
   const salvarConfiguracoes = async () => {
-    if (!chavePix || !titular || !banco) {
-      Alert.alert("Erro", "Chave PIX, Titular e Banco são obrigatórios!");
+    if (!chavePix || !banco || !titular) {
+      Alert.alert("Atenção", "Chave PIX, Banco e Titular são obrigatórios.");
       return;
     }
 
     setLoading(true);
     try {
-      await setDoc(doc(db, "configuracoes", "doacoes"), {
-        chavePix,
+      const textoFormatado = `Banco: ${banco}\nAg: ${agencia} | CC: ${conta}\nTitular: ${titular}`;
+
+      await setDoc(doc(db, "config", "doacao"), {
+        pix: chavePix,
         titular,
-        banco,
+        bancoNome: banco,
         agencia,
         conta,
-        qrCodeUrl,
-        ultimaAtualizacao: new Date()
+        bank: textoFormatado, 
+        updatedAt: new Date()
       });
 
       Alert.alert("Sucesso", "Dados bancários atualizados!");
@@ -70,57 +94,103 @@ export default function EditDonate() {
     }
   };
 
-  if (fetching) return <View style={styles.center}><ActivityIndicator size="large" color="#4a148c" /></View>;
+  if (fetching) {
+    return (
+      <View style={[styles.center, { backgroundColor: colors.background }]}>
+        <ActivityIndicator size="large" color={colors.primary} />
+      </View>
+    );
+  }
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
+      {/* 2. CONFIGURAÇÃO DA BARRA DE NAVEGAÇÃO */}
+      <Stack.Screen 
+        options={{ 
+          title: "Editar Dados", // O novo nome
+          headerStyle: { backgroundColor: colors.card }, // Cor do fundo da barra
+          headerTintColor: colors.text, // Cor do texto e da seta
+          headerTitleStyle: { fontWeight: 'bold' } 
+        }} 
+      />
+
       <ScrollView contentContainerStyle={{ padding: 20 }}>
-        <Text style={styles.title}>Configurar Doações</Text>
+        <Text style={[styles.title, { color: colors.primary }]}>Configurar Doações</Text>
 
-        <Text style={styles.label}>Chave PIX</Text>
-        <TextInput style={styles.input} value={chavePix} onChangeText={setChavePix} placeholder="CPF, E-mail ou Chave Aleatória" />
+        <Text style={[styles.label, { color: colors.textSecondary }]}>Chave PIX (CPF/CNPJ Automático)</Text>
+        <TextInput 
+          style={[styles.input, { backgroundColor: colors.inputBg, color: colors.text, borderColor: colors.border }]} 
+          value={chavePix} 
+          onChangeText={handlePixChange} 
+          placeholder="Digite CPF, CNPJ ou E-mail..." 
+          placeholderTextColor={colors.textSecondary}
+          keyboardType="email-address" 
+          autoCapitalize="none"
+        />
 
-        <Text style={styles.label}>Nome do Titular</Text>
-        <TextInput style={styles.input} value={titular} onChangeText={setTitular} placeholder="Igreja Presbiteriana..." />
+        <Text style={[styles.dividerTitle, { color: colors.primary, marginTop: 25 }]}>Dados Bancários</Text>
 
-        <Text style={styles.label}>Banco</Text>
-        <TextInput style={styles.input} value={banco} onChangeText={setBanco} placeholder="Ex: Bradesco, NuBank" />
+        <Text style={[styles.label, { color: colors.textSecondary }]}>Nome do Titular (Igreja)</Text>
+        <TextInput 
+          style={[styles.input, { backgroundColor: colors.inputBg, color: colors.text, borderColor: colors.border }]} 
+          value={titular} 
+          onChangeText={setTitular} 
+          placeholder="Igreja Presbiteriana..." 
+          placeholderTextColor={colors.textSecondary}
+        />
+
+        <Text style={[styles.label, { color: colors.textSecondary }]}>Banco</Text>
+        <TextInput 
+          style={[styles.input, { backgroundColor: colors.inputBg, color: colors.text, borderColor: colors.border }]} 
+          value={banco} 
+          onChangeText={setBanco} 
+          placeholder="Ex: Bradesco, NuBank" 
+          placeholderTextColor={colors.textSecondary}
+        />
 
         <View style={{ flexDirection: 'row', gap: 10 }}>
           <View style={{ flex: 1 }}>
-            <Text style={styles.label}>Agência</Text>
-            <TextInput style={styles.input} value={agencia} onChangeText={setAgencia} keyboardType="numeric" />
+            <Text style={[styles.label, { color: colors.textSecondary }]}>Agência</Text>
+            <TextInput 
+              style={[styles.input, { backgroundColor: colors.inputBg, color: colors.text, borderColor: colors.border }]} 
+              value={agencia} 
+              onChangeText={setAgencia} 
+              keyboardType="numeric"
+            />
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={styles.label}>Conta</Text>
-            <TextInput style={styles.input} value={conta} onChangeText={setConta} keyboardType="numeric" />
+            <Text style={[styles.label, { color: colors.textSecondary }]}>Conta</Text>
+            <TextInput 
+              style={[styles.input, { backgroundColor: colors.inputBg, color: colors.text, borderColor: colors.border }]} 
+              value={conta} 
+              onChangeText={setConta} 
+              keyboardType="numeric"
+            />
           </View>
         </View>
 
-        <Text style={styles.label}>URL da Imagem do QR Code</Text>
-        <TextInput 
-          style={styles.input} 
-          value={qrCodeUrl} 
-          onChangeText={setQrCodeUrl} 
-          placeholder="https://link-da-imagem.com/qrcode.png" 
-        />
-        <Text style={styles.hint}>Dica: Você pode hospedar a imagem em um site como ImgBB e colar o link direto aqui.</Text>
-
-        <TouchableOpacity style={styles.btn} onPress={salvarConfiguracoes} disabled={loading}>
-          {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnText}>ATUALIZAR DADOS</Text>}
+        <TouchableOpacity style={[styles.btn, { backgroundColor: colors.primary }]} onPress={salvarConfiguracoes} disabled={loading}>
+          {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnText}>SALVAR ALTERAÇÕES</Text>}
         </TouchableOpacity>
+        
+        <TouchableOpacity style={[styles.cancelBtn, { borderColor: colors.textSecondary }]} onPress={() => router.back()}>
+          <Text style={[styles.cancelText, { color: colors.textSecondary }]}>Cancelar</Text>
+        </TouchableOpacity>
+
       </ScrollView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#fff' },
+  container: { flex: 1 },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  title: { fontSize: 22, fontWeight: 'bold', color: '#4a148c', marginBottom: 20, textAlign: 'center' },
-  label: { fontSize: 14, fontWeight: 'bold', color: '#666', marginBottom: 5, marginTop: 15 },
-  input: { backgroundColor: '#f5f5f5', padding: 12, borderRadius: 8, borderWidth: 1, borderColor: '#eee', fontSize: 16 },
-  btn: { backgroundColor: '#4a148c', padding: 15, borderRadius: 10, marginTop: 30, alignItems: 'center' },
+  title: { fontSize: 22, fontWeight: 'bold', marginBottom: 10, textAlign: 'center' },
+  dividerTitle: { fontSize: 18, fontWeight: 'bold', marginBottom: 10, borderBottomWidth: 1, borderBottomColor: '#ccc', paddingBottom: 5 },
+  label: { fontSize: 14, fontWeight: 'bold', marginBottom: 8, marginTop: 15 },
+  input: { padding: 12, borderRadius: 8, borderWidth: 1, fontSize: 16 },
+  btn: { padding: 15, borderRadius: 10, marginTop: 30, alignItems: 'center' },
   btnText: { color: '#fff', fontWeight: 'bold', fontSize: 16 },
-  hint: { fontSize: 11, color: '#999', marginTop: 5, fontStyle: 'italic' }
+  cancelBtn: { padding: 15, borderRadius: 10, marginTop: 10, alignItems: 'center', borderWidth: 1, backgroundColor: 'transparent' },
+  cancelText: { fontWeight: 'bold' }
 });

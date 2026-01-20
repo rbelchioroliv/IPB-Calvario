@@ -4,13 +4,14 @@ import React, { useEffect, useRef, useState } from 'react';
 import { View, Animated, StyleSheet } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 
-// Importação do Contexto de Admin (Certifique-se que o arquivo existe em context/AdminContext.tsx)
+// Contextos
 import { AdminProvider } from '@/context/AdminContext';
+import { ThemeProvider } from '@/context/ThemeContext'; // <--- Import Novo
 
 export default function RootLayout() {
   const [appIsReady, setAppIsReady] = useState(false);
   
-  // Animação da Splash Screen
+  // Animação da Splash Screen (MANTIDA)
   const fadeAnim = useRef(new Animated.Value(0)).current;  
   const scaleAnim = useRef(new Animated.Value(0.8)).current; 
 
@@ -50,17 +51,19 @@ export default function RootLayout() {
     );
   }
 
-  // --- AQUI ESTAVA FALTANDO A CONFIGURAÇÃO DO ADMIN ---
+  // --- AQUI ENVOLVEMOS COM O THEME PROVIDER ---
   return (
-    <AdminProvider>
-      <Stack screenOptions={{ headerShown: false }}>
-        {/* Telas principais (Abas) */}
-        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-        
-        {/* Nova rota para o Painel Administrativo */}
-        <Stack.Screen name="admin" options={{ headerShown: false }} />
-      </Stack>
-    </AdminProvider>
+    <ThemeProvider>
+      <AdminProvider>
+        <Stack screenOptions={{ headerShown: false }}>
+          {/* Telas principais (Abas) */}
+          <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+          
+          {/* Nova rota para o Painel Administrativo */}
+          <Stack.Screen name="admin" options={{ headerShown: false }} />
+        </Stack>
+      </AdminProvider>
+    </ThemeProvider>
   );
 }
 

@@ -1,95 +1,93 @@
-// app/(tabs)/social.tsx
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, Image, ScrollView, TouchableOpacity, Linking } from 'react-native';
+import React from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, Linking, ScrollView, Image } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { INSTAGRAM_POSTS } from '@/constants/churchData';
+// TEMA
+import { useTheme } from '@/context/ThemeContext';
 
 export default function SocialScreen() {
-  const [postsAtuais, setPostsAtuais] = useState<typeof INSTAGRAM_POSTS>([]);
+  const { colors } = useTheme();
 
-  useEffect(() => {
-    const atualizarPosts = () => {
-      
-      if (INSTAGRAM_POSTS.length <= 3) {
-        setPostsAtuais(INSTAGRAM_POSTS);
-        return;
-      }
-
-      const horaAtual = new Date().getHours();
-      const indiceGrupo = horaAtual % 3; 
-      const inicio = indiceGrupo * 3;
-      
-      const fim = Math.min(inicio + 3, INSTAGRAM_POSTS.length);
-      
-      const postsSelecionados = INSTAGRAM_POSTS.slice(inicio, fim);
-      
-    
-      setPostsAtuais(postsSelecionados.length > 0 ? postsSelecionados : INSTAGRAM_POSTS.slice(0, 3));
-    };
-
-    atualizarPosts();
-  }, []);
-
-  const openInstagramProfile = () => {
-    Linking.openURL('https://www.instagram.com/ipcalvariobotucatu/');
+  const openLink = (url: string) => {
+    Linking.openURL(url).catch(err => console.error("Couldn't load page", err));
   };
 
+  const SocialButton = ({ icon, title, url, color }: any) => (
+    <TouchableOpacity 
+      style={[styles.socialBtn, { backgroundColor: colors.card, shadowColor: colors.text }]} 
+      onPress={() => openLink(url)}
+    >
+      <Ionicons name={icon} size={30} color={color} />
+      <Text style={[styles.socialText, { color: colors.text }]}>{title}</Text>
+      <Ionicons name="chevron-forward" size={20} color={colors.textSecondary} />
+    </TouchableOpacity>
+  );
+
   return (
-    <ScrollView style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.title}>Nossas Redes</Text>
-        <Text style={styles.subtitle}>Fique por dentro do que acontece</Text>
+    <ScrollView style={[styles.container, { backgroundColor: colors.background }]}>
+      <View style={[styles.header, { backgroundColor: colors.card, borderBottomColor: colors.border }]}>
+        <Text style={[styles.headerTitle, { color: colors.primary }]}>Nossas Redes</Text>
       </View>
 
       <View style={styles.content}>
-        <View style={styles.instaBadge}>
-          <Ionicons name="logo-instagram" size={20} color="#C13584" />
-          <Text style={styles.badgeText}>@ipcalvariobotucatu</Text>
+        <View style={styles.logoContainer}>
+          <Image source={require('@/assets/images/logo-igreja.png')} style={styles.logo} resizeMode="contain" />
+          <Text style={[styles.churchName, { color: colors.primary }]}>IPB Calvário</Text>
+          <Text style={[styles.slogan, { color: colors.textSecondary }]}>Conectados em Cristo</Text>
         </View>
 
-        <Text style={styles.infoText}>
-          Destaques da Igreja
-        </Text>
+        <SocialButton 
+          icon="logo-instagram" 
+          title="Instagram" 
+          url="https://instagram.com/ipcalvariobotucatu" 
+          color="#E1306C" 
+        />
+        <SocialButton 
+          icon="logo-facebook" 
+          title="Facebook" 
+          url="https://facebook.com/ipcalvario" 
+          color="#1877F2" 
+        />
+        {/* <SocialButton 
+          icon="logo-youtube" 
+          title="YouTube" 
+          url="https://youtube.com/ipbcalvario" 
+          color="#FF0000" 
+        /> */}
+        <SocialButton 
+          icon="logo-whatsapp" 
+          title="WhatsApp" 
+          url="https://wa.me/5514991620440" 
+          color="#25D366" 
+        />
+        <SocialButton 
+          icon="location" 
+          title="Como Chegar (Maps)" 
+          url="https://maps.google.com/?q=Igreja+Presbiteriana+Calvario+Botucatu" 
+          color={colors.primary} 
+        />
 
-        {postsAtuais.map((item) => (
-          <View key={item.id} style={styles.postCard}>
-      
-            <Image source={item.img} style={styles.postImage} />
-            
-            <View style={styles.captionContainer}>
-              <Text style={styles.caption}>{item.caption}</Text>
-              <View style={styles.actions}>
-                <Ionicons name="heart-outline" size={24} color="#333" style={{marginRight: 10}} />
-                <Ionicons name="chatbubble-outline" size={24} color="#333" />
-              </View>
-            </View>
-          </View>
-        ))}
-
-        <TouchableOpacity style={styles.button} onPress={openInstagramProfile}>
-          <Text style={styles.buttonText}>Ver todos os posts no Instagram</Text>
-          <Ionicons name="arrow-forward" size={20} color="#fff" style={{ marginLeft: 5 }}/>
-        </TouchableOpacity>
+        <View style={[styles.infoCard, { backgroundColor: colors.card, shadowColor: colors.text }]}>
+          <Text style={[styles.infoTitle, { color: colors.primary }]}>Horários de Culto</Text>
+          <Text style={[styles.infoText, { color: colors.text }]}>Domingo: 09h (EBD) e 19h (Culto Solene)</Text>
+          <Text style={[styles.infoText, { color: colors.text }]}>Quinta: 20h (Estudo Bíblico)</Text>
+        </View>
       </View>
-      <View style={{height: 20}} />
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f3e5f5' },
-  header: { padding: 20, backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#e1bee7', marginTop: 30 },
-  title: { fontSize: 24, fontWeight: 'bold', color: '#4a148c', textAlign: 'center' },
-  subtitle: { fontSize: 14, color: '#7b1fa2', textAlign: 'center' },
-  content: { padding: 15 },
-  instaBadge: { flexDirection: 'row', alignItems: 'center', alignSelf: 'center', backgroundColor: '#fff', paddingHorizontal: 15, paddingVertical: 8, borderRadius: 20, marginBottom: 10, elevation: 1 },
-  badgeText: { fontWeight: 'bold', color: '#C13584', marginLeft: 8 },
-  infoText: { textAlign: 'center', color: '#888', marginBottom: 20, fontSize: 12, fontStyle: 'italic' },
-  postCard: { backgroundColor: '#fff', borderRadius: 15, marginBottom: 20, overflow: 'hidden', elevation: 3 },
-  postImage: { width: '100%', height: 300, resizeMode: 'cover' },
-  captionContainer: { padding: 15 },
-  caption: { fontSize: 14, color: '#333', marginBottom: 10, lineHeight: 20 },
-  actions: { flexDirection: 'row', marginTop: 5 },
-  button: { backgroundColor: '#4a148c', padding: 15, borderRadius: 10, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', marginTop: 10 },
-  buttonText: { color: '#fff', fontWeight: 'bold' }
+  container: { flex: 1 },
+  header: { padding: 20, borderBottomWidth: 1, marginTop: 30, alignItems: 'center' },
+  headerTitle: { fontSize: 20, fontWeight: 'bold' },
+  content: { padding: 20 },
+  logoContainer: { alignItems: 'center', marginBottom: 30 },
+  logo: { width: 100, height: 100, marginBottom: 10 },
+  churchName: { fontSize: 22, fontWeight: 'bold' },
+  slogan: { fontSize: 16 },
+  socialBtn: { flexDirection: 'row', alignItems: 'center', padding: 15, borderRadius: 12, marginBottom: 15, elevation: 2 },
+  socialText: { flex: 1, fontSize: 18, fontWeight: 'bold', marginLeft: 15 },
+  infoCard: { padding: 20, borderRadius: 12, marginTop: 10, elevation: 2 },
+  infoTitle: { fontSize: 18, fontWeight: 'bold', marginBottom: 10, textAlign: 'center' },
+  infoText: { fontSize: 16, marginBottom: 5, textAlign: 'center' },
 });
